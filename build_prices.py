@@ -13,6 +13,12 @@ Prérequis : duckdb, pandas, requests
 import os, sys, io, json, gzip, datetime, tempfile, pathlib
 from datetime import date, timedelta
 import pandas as pd
+def safe_int(x):
+    # renvoie None si x est NaN/None, sinon int(x)
+    try:
+        return int(x) if pd.notna(x) else None
+    except Exception:
+        return None
 import duckdb
 import requests
 
@@ -134,9 +140,9 @@ def build_prices(dvf_path: str, communes_json):
             "appart": row.get("med_eur_m2_appartement"),
             "maison": row.get("med_eur_m2_maison"),
             "n_ventes": {
-                "appart": int(row["n_appartement"]) if row.get("n_appartement") is not None else None,
-                "maison": int(row["n_maison"]) if row.get("n_maison") is not None else None
-            }
+    "appart": safe_int(row.get("n_appartement")),
+    "maison": safe_int(row.get("n_maison"))
+}
         }
 
     out = {
