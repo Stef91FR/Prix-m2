@@ -15,7 +15,7 @@
     main { max-width: 800px; margin: 24px auto; padding: 0 16px 64px; }
     .card { background: #0f1631; border: 1px solid #1b2250; border-radius: var(--radius); padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
     .row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
-    input[type="text"] { width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid #283060; background: #0b1128; color: #e6e9ff; outline: none; }
+    input[type="text"], select { width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid #283060; background: #0b1128; color: #e6e9ff; outline: none; }
     button { padding: 12px 16px; border-radius: 12px; border: 1px solid #283060; background: #3240ff; color: white; cursor: pointer; font-weight: 600; }
     button:disabled { opacity: .6; cursor: not-allowed; }
     small.hint { display: block; margin-top: 8px; color: #aabbff; opacity: .8; }
@@ -30,6 +30,9 @@
     .error { background: #2b1130; border: 1px solid #602850; color: #ffd1df; border-radius: 12px; padding: 10px 12px; }
     .loader { display:inline-block; width: 18px; height: 18px; border: 3px solid rgba(255,255,255,.25); border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite; vertical-align: middle; margin-left: 6px; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    table { width:100%; border-collapse:collapse }
+    th, td { padding:8px; border-bottom:1px solid #1b2250 }
+    th { border-bottom:1px solid #283060 }
   </style>
 </head>
 <body>
@@ -37,6 +40,7 @@
     <h1>Prix au m² — France</h1>
     <p class="sub">Maisons & Appartements — 12 et 24 derniers mois glissants</p>
   </header>
+
   <main>
     <div class="card">
       <label for="ville">Ville</label>
@@ -48,270 +52,253 @@
       <div id="suggestions" class="muted" style="margin-top:8px"></div>
       <div id="msg" style="margin-top:12px"></div>
       <div id="out" class="result"></div>
+
       <button id="btn-seloger" style="margin-top:12px">Chercher les prix constatés (SeLoger)</button>
       <div id="seloger-out" class="result"></div>
-        </div>
+    </div>
+
+    <!-- Bloc CLASSEMENT -->
+    <div class="card" style="margin-top:16px">
+      <h3 style="margin:0 0 8px">Classement par département</h3>
+
+      <div class="row" style="grid-template-columns: repeat(5, 1fr); gap:8px">
+        <input id="dept-code" type="text" placeholder="Code dép. (ex. 74, 13, 2A, 2B)" />
+        <select id="period">
+          <option value="12">12 mois</option>
+          <option value="24">24 mois</option>
+        </select>
+        <select id="kind">
+          <option value="appart">Appartements</option>
+          <option value="maison">Maisons</option>
+        </select>
+        <select id="order">
+          <option value="desc">Décroissant</option>
+          <option value="asc">Croissant</option>
+        </select>
+        <button id="btn-ranking">Voir</button>
+      </div>
+
+      <div id="ranking-msg" class="muted" style="margin-top:8px"></div>
+      <div id="ranking-out" style="margin-top:8px"></div>
+    </div>
+
     <footer>
       <p>Sources : <a href="https://api-adresse.data.gouv.fr" target="_blank" rel="noreferrer">API Adresse</a> &nbsp;•&nbsp; DVF (Etalab/DGFIP)</p>
     </footer>
   </main>
 
-//--- Infos des classements------
-  <div class="card" style="margin-top:16px">
-  <h3 style="margin:0 0 8px">Classement par département</h3>
-
-  <div class="row" style="grid-template-columns: repeat(5, 1fr); gap:8px">
-    <input id="dept-code" type="text" placeholder="Code dép. (ex. 74, 13, 2A, 2B)" />
-    <select id="period">
-      <option value="12">12 mois</option>
-      <option value="24">24 mois</option>
-    </select>
-    <select id="kind">
-      <option value="appart">Appartements</option>
-      <option value="maison">Maisons</option>
-    </select>
-    <select id="order">
-      <option value="desc">Décroissant</option>
-      <option value="asc">Croissant</option>
-    </select>
-    <button id="btn-ranking">Voir</button>
-  </div>
-
-  <div id="ranking-msg" class="muted" style="margin-top:8px"></div>
-  <div id="ranking-out" style="margin-top:8px"></div>
-</div>
-
-  
-<script>
-  //----- Pages des classements -----
-  let PRICES12 = null;
-let PRICES24 = null;
-
-async function ensurePricesLoaded() {
-  if (!PRICES12 || !PRICES24) {
-    [PRICES12, PRICES24] = await Promise.all([
-      loadJSON('prices_12.json'),
-      loadJSON('prices_24.json')
-    ]);
-  }
-}
-//-------- logique du classement--------
-  function makeRanking(dataObj, deptCode, kind, order) {
-  const out = [];
-  for (const [insee, row] of Object.entries(dataObj.data)) {
-    if (!row || row.dept !== deptCode) continue;
-    const val = row[kind];
-    if (val == null) continue; // pas de données pour ce type
-    const n = row.n_ventes?.[kind] ?? null;
-    out.push({
-      insee, ville: row.ville, value: val, n
-    });
-  }
-  out.sort((a,b) => order === 'asc' ? (a.value - b.value) : (b.value - a.value));
-  return out;
-}
-
-function renderRankingTable(rows, title) {
-  if (!rows.length) return `<div class="error">Aucune donnée pour ces critères.</div>`;
-  const head = `
-    <div class="muted" style="margin-bottom:6px">${title}</div>
-    <table style="width:100%; border-collapse:collapse">
-      <thead>
-        <tr>
-          <th style="text-align:left; padding:8px; border-bottom:1px solid #283060">Ville</th>
-          <th style="text-align:right; padding:8px; border-bottom:1px solid #283060">Prix €/m²</th>
-          <th style="text-align:right; padding:8px; border-bottom:1px solid #283060">n ventes</th>
-        </tr>
-      </thead>
-      <tbody>
-  `;
-  const body = rows.map(r => `
-    <tr>
-      <td style="padding:8px; border-bottom:1px solid #1b2250">${r.ville} (${r.insee})</td>
-      <td style="padding:8px; text-align:right; border-bottom:1px solid #1b2250">${euro(r.value)}</td>
-      <td style="padding:8px; text-align:right; border-bottom:1px solid #1b2250">${number(r.n ?? 0)}</td>
-    </tr>
-  `).join('');
-  const foot = `</tbody></table>`;
-  return head + body + foot;
-}
-
-  // ---------- Helpers affichage ----------
-  function euro(n){
-    if (n == null || Number.isNaN(n)) return "N/A";
-    return new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR', maximumFractionDigits: 0 }).format(n);
-  }
-  function number(n){ return new Intl.NumberFormat('fr-FR').format(n ?? 0); }
-  async function loadJSON(url){
-    const r = await fetch(url + '?nocache=' + Date.now(), { cache: 'no-store' });
-    if(!r.ok) throw new Error('HTTP ' + r.status);
-    return await r.json();
-  }
-  //-------- Population ------
-  async function fetchPopulation(insee) {
-  const r = await fetch(`https://geo.api.gouv.fr/communes/${encodeURIComponent(insee)}?fields=nom,population&format=json`);
-  if (!r.ok) return null;
-  const j = await r.json();
-  return j.population ?? null;
-}
-
-  // ---------- DOM ----------
-  const $ = (s) => document.querySelector(s);
-  const villeInput = $('#ville');
-  const btn = $('#btn');
-  const suggestions = $('#suggestions');
-  const msg = $('#msg');
-  const out = $('#out');
-  const btnSe = document.getElementById('btn-seloger');
-  const seOut = document.getElementById('seloger-out');
-  let chosen = null; // {name, code_insee}
-
-  // ---------- Autocomplétion ----------
-  async function searchAdresse(q){
-    if(!q || q.length < 2) { suggestions.innerHTML = ''; btn.disabled = true; return; }
-    suggestions.innerHTML = 'Recherche… <span class="loader"></span>';
-    try{
-      const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&type=municipality&autocomplete=1&limit=5`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if(!data.features.length){ suggestions.innerHTML = '<span class="muted">Aucune commune trouvée.</span>'; btn.disabled = true; return; }
-      suggestions.innerHTML = data.features.map((f) => {
-        const name = f.properties.label;
-        const code = f.properties.citycode;
-        return `<div class="sug" data-code="${code}" data-name="${name}" style="padding:6px 8px; border:1px solid #283060; background:#0b1128; border-radius:10px; margin-top:6px; cursor:pointer">${name} <span class="muted">(${code})</span></div>`;
-      }).join('');
-      suggestions.querySelectorAll('.sug').forEach(div => {
-        div.addEventListener('click', () => {
-          chosen = { name: div.dataset.name, code_insee: div.dataset.code };
-          villeInput.value = div.dataset.name;
-          suggestions.innerHTML = `<span class="muted">Commune sélectionnée : ${chosen.name} (${chosen.code_insee})</span>`;
-          btn.disabled = false;
-          villeInput.blur();
-        });
-      });
-    } catch(e){
-      suggestions.innerHTML = '<div class="error">Erreur de l’API Adresse.</div>';
-      btn.disabled = true;
+  <script>
+    // ---------- Helpers ----------
+    function euro(n){
+      if (n == null || Number.isNaN(n)) return "N/A";
+      return new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR', maximumFractionDigits: 0 }).format(n);
     }
-  }
-  villeInput.addEventListener('input', (e) => {
-    chosen = null;
-    out.classList.remove('show');
-    out.innerHTML = '';
-    seOut.classList.remove('show');
-    seOut.innerHTML = '';
-    searchAdresse(e.target.value);
-  });
+    function number(n){ return new Intl.NumberFormat('fr-FR').format(n ?? 0); }
+    async function loadJSON(url){
+      const r = await fetch(url + '?nocache=' + Date.now(), { cache: 'no-store' });
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    }
+    async function fetchPopulation(insee) {
+      const r = await fetch(`https://geo.api.gouv.fr/communes/${encodeURIComponent(insee)}?fields=nom,population&format=json`);
+      if (!r.ok) return null;
+      const j = await r.json();
+      return j.population ?? null;
+    }
 
-  // ---------- Bouton principal (12 et 24 mois) ----------
-  btn.addEventListener('click', async () => {
-    msg.innerHTML = '';
-    out.classList.remove('show');
-    out.innerHTML = '';
-    seOut.classList.remove('show');
-    seOut.innerHTML = '';
+    // ---------- DOM ----------
+    const $ = (s) => document.querySelector(s);
+    const villeInput = $('#ville');
+    const btn = $('#btn');
+    const suggestions = $('#suggestions');
+    const msg = $('#msg');
+    const out = $('#out');
+    const btnSe = $('#btn-seloger');
+    const seOut = $('#seloger-out');
 
-    if(!chosen){ msg.innerHTML = '<div class="error">Choisissez d’abord une commune.</div>'; return; }
-    btn.disabled = true; btn.textContent = 'Chargement…';
-    try {
-      const [p12, p24] = await Promise.all([
-        loadJSON('prices_12.json'),
-        loadJSON('prices_24.json')
-      ]);
-      const r12 = p12.data[chosen.code_insee];
-      const r24 = p24.data[chosen.code_insee];
+    // ---------- Autocomplétion ----------
+    async function searchAdresse(q){
+      if(!q || q.length < 2) { suggestions.innerHTML = ''; btn.disabled = true; return; }
+      suggestions.innerHTML = 'Recherche… <span class="loader"></span>';
+      try{
+        const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&type=municipality&autocomplete=1&limit=5`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if(!data.features.length){ suggestions.innerHTML = '<span class="muted">Aucune commune trouvée.</span>'; btn.disabled = true; return; }
+        suggestions.innerHTML = data.features.map((f) => {
+          const name = f.properties.label;
+          const code = f.properties.citycode;
+          return `<div class="sug" data-code="${code}" data-name="${name}" style="padding:6px 8px; border:1px solid #283060; background:#0b1128; border-radius:10px; margin-top:6px; cursor:pointer">${name} <span class="muted">(${code})</span></div>`;
+        }).join('');
+        suggestions.querySelectorAll('.sug').forEach(div => {
+          div.addEventListener('click', () => {
+            window.chosen = { name: div.dataset.name, code_insee: div.dataset.code };
+            villeInput.value = div.dataset.name;
+            suggestions.innerHTML = `<span class="muted">Commune sélectionnée : ${window.chosen.name} (${window.chosen.code_insee})</span>`;
+            btn.disabled = false;
+            villeInput.blur();
+          });
+        });
+      } catch(e){
+        suggestions.innerHTML = '<div class="error">Erreur de l’API Adresse.</div>';
+        btn.disabled = true;
+      }
+    }
+    villeInput.addEventListener('input', (e) => {
+      window.chosen = null;
+      out.classList.remove('show'); out.innerHTML = '';
+      seOut.classList.remove('show'); seOut.innerHTML = '';
+      searchAdresse(e.target.value);
+    });
 
-      function card(title, row, periode, devise){
-        if(!row) return `<div class="error">Pas de données pour ${title.toLowerCase()}.</div>`;
-        return `
-          <div class="muted" style="margin:10px 0 4px">${title} — Période : ${periode} • Unité : ${devise}</div>
-          <div class="stats">
-            <div class="stat"><h3>Appartements</h3><div class="val">${euro(row.appart)}</div><div class="muted">médiane — n=${number(row.n_ventes.appart)}</div></div>
-            <div class="stat"><h3>Maisons</h3><div class="val">${euro(row.maison)}</div><div class="muted">médiane — n=${number(row.n_ventes.maison)}</div></div>
+    // ---------- Bouton principal (12/24 mois) ----------
+    btn.addEventListener('click', async () => {
+      msg.innerHTML = '';
+      out.classList.remove('show'); out.innerHTML = '';
+      seOut.classList.remove('show'); seOut.innerHTML = '';
+
+      if(!window.chosen){ msg.innerHTML = '<div class="error">Choisissez d’abord une commune.</div>'; return; }
+      btn.disabled = true; btn.textContent = 'Chargement…';
+      try {
+        const [p12, p24] = await Promise.all([ loadJSON('prices_12.json'), loadJSON('prices_24.json') ]);
+        const r12 = p12.data[window.chosen.code_insee];
+        const r24 = p24.data[window.chosen.code_insee];
+
+        function card(title, row, periode, devise){
+          if(!row) return `<div class="error">Pas de données pour ${title.toLowerCase()}.</div>`;
+          return `
+            <div class="muted" style="margin:10px 0 4px">${title} — Période : ${periode} • Unité : ${devise}</div>
+            <div class="stats">
+              <div class="stat"><h3>Appartements</h3><div class="val">${euro(row.appart)}</div><div class="muted">médiane — n=${number(row.n_ventes.appart)}</div></div>
+              <div class="stat"><h3>Maisons</h3><div class="val">${euro(row.maison)}</div><div class="muted">médiane — n=${number(row.n_ventes.maison)}</div></div>
+            </div>
+          `;
+        }
+
+        out.innerHTML = `
+          ${card('12 derniers mois glissants', r12, p12.periode, p12.devise)}
+          <hr style="border:0;border-top:1px solid #283060;margin:14px 0">
+          ${card('24 derniers mois glissants', r24, p24.periode, p24.devise)}
+          <div class="muted" style="margin-top:8px">
+            Commune : <b>${(r12||r24)?.ville ?? window.chosen.name}</b> (${window.chosen.code_insee})
           </div>
         `;
+        out.classList.add('show');
+
+        // Population
+        const pop = await fetchPopulation(window.chosen.code_insee);
+        if (pop != null) {
+          const popDiv = document.createElement('div');
+          popDiv.className = 'muted';
+          popDiv.style.marginTop = '8px';
+          popDiv.textContent = `Population municipale (dernier recensement INSEE) : ${number(pop)} habitants`;
+          out.appendChild(popDiv);
+        }
+      } catch (err) {
+        out.innerHTML = `<div class="error">Impossible de charger les données.</div>`;
+        out.classList.add('show');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Rechercher';
       }
+    });
 
-      out.innerHTML = `
-        ${card('12 derniers mois glissants', r12, p12.periode, p12.devise)}
-        <hr style="border:0;border-top:1px solid #283060;margin:14px 0">
-        ${card('24 derniers mois glissants', r24, p24.periode, p24.devise)}
-        <div class="muted" style="margin-top:8px">
-          Commune : <b>${(r12||r24)?.ville ?? chosen.name}</b> (${chosen.code_insee})
-        </div>
-      `;
-      out.classList.add('show');
-    } catch (err) {
-      out.innerHTML = `<div class="error">Impossible de charger les données.</div>`;
-      out.classList.add('show');
-    } finally {
-      btn.disabled = false; btn.textContent = 'Rechercher';
+    // ---------- Bouton SeLoger ----------
+    btnSe.addEventListener('click', async () => {
+      if (!window.chosen) { msg.innerHTML = '<div class="error">Choisissez d’abord une commune.</div>'; return; }
+      btnSe.disabled = true; btnSe.textContent = 'Recherche SeLoger…';
+      try {
+        const url = `/api/seloger?name=${encodeURIComponent(window.chosen.name)}&insee=${encodeURIComponent(window.chosen.code_insee)}&dept=${encodeURIComponent(window.chosen.code_insee.slice(0,2))}`;
+        const r = await fetch(url);
+        const s = await r.json();
+
+        seOut.classList.add('show');
+        seOut.innerHTML = `
+          <div class="muted" style="margin:10px 0 4px">Prix constatés (SeLoger)</div>
+          <div class="stats">
+            <div class="stat"><h3>Appartements</h3><div class="val">${euro(s.appart)}</div></div>
+            <div class="stat"><h3>Maisons</h3><div class="val">${euro(s.maison)}</div></div>
+          </div>
+          <div class="muted" style="margin-top:6px">
+            ${s.source_url ? `Source : <a href="${s.source_url}" target="_blank" rel="noreferrer">SeLoger</a>` : `Non disponible pour cette commune`}
+          </div>
+        `;
+      } catch (e) {
+        seOut.classList.add('show');
+        seOut.innerHTML = `<div class="error">Erreur SeLoger.</div>`;
+      } finally {
+        btnSe.disabled = false; btnSe.textContent = 'Chercher les prix constatés (SeLoger)';
+      }
+    });
+
+    // ---------- Classement par département ----------
+    let PRICES12 = null, PRICES24 = null;
+    async function ensurePricesLoaded() {
+      if (!PRICES12 || !PRICES24) {
+        [PRICES12, PRICES24] = await Promise.all([ loadJSON('prices_12.json'), loadJSON('prices_24.json') ]);
+      }
     }
-    const pop = await fetchPopulation(chosen.code_insee);
-if (pop != null) {
-  const popDiv = document.createElement('div');
-  popDiv.className = 'muted';
-  popDiv.style.marginTop = '8px';
-  popDiv.textContent = `Population municipale (dernier recensement INSEE) : ${number(pop)} habitants`;
-  out.appendChild(popDiv);
-}
-
-  });
-
-  // ---------- Bouton SeLoger ----------
-  btnSe.addEventListener('click', async () => {
-    if (!chosen) { msg.innerHTML = '<div class="error">Choisissez d’abord une commune.</div>'; return; }
-    btnSe.disabled = true; btnSe.textContent = 'Recherche SeLoger…';
-    try {
-      const url = `/api/seloger?name=${encodeURIComponent(chosen.name)}&insee=${encodeURIComponent(chosen.code_insee)}&dept=${encodeURIComponent(chosen.code_insee.slice(0,2))}`;
-      const r = await fetch(url);
-      const s = await r.json();
-
-      seOut.classList.add('show');
-      seOut.innerHTML = `
-        <div class="muted" style="margin:10px 0 4px">Prix constatés (SeLoger)</div>
-        <div class="stats">
-          <div class="stat"><h3>Appartements</h3><div class="val">${euro(s.appart)}</div></div>
-          <div class="stat"><h3>Maisons</h3><div class="val">${euro(s.maison)}</div></div>
-        </div>
-        <div class="muted" style="margin-top:6px">
-          ${s.source_url ? `Source : <a href="${s.source_url}" target="_blank" rel="noreferrer">SeLoger</a>` : `Non disponible pour cette commune`}
-        </div>
-      `;
-    } catch (e) {
-      seOut.classList.add('show');
-      seOut.innerHTML = `<div class="error">Erreur SeLoger.</div>`;
-    } finally {
-      btnSe.disabled = false; btnSe.textContent = 'Chercher les prix constatés (SeLoger)';
+    function makeRanking(dataObj, deptCode, kind, order) {
+      const out = [];
+      for (const [insee, row] of Object.entries(dataObj.data)) {
+        if (!row || row.dept !== deptCode) continue;
+        const val = row[kind];
+        if (val == null) continue;
+        const n = row.n_ventes?.[kind] ?? null;
+        out.push({ insee, ville: row.ville, value: val, n });
+      }
+      out.sort((a,b) => order === 'asc' ? (a.value - b.value) : (b.value - a.value));
+      return out;
     }
-    // Handler du bouton VOIR classement-------
+    function renderRankingTable(rows, title) {
+      if (!rows.length) return `<div class="error">Aucune donnée pour ces critères.</div>`;
+      const head = `
+        <div class="muted" style="margin-bottom:6px">${title}</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:left">Ville</th>
+              <th style="text-align:right">Prix €/m²</th>
+              <th style="text-align:right">n ventes</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      const body = rows.map(r => `
+        <tr>
+          <td>${r.ville} (${r.insee})</td>
+          <td style="text-align:right">${euro(r.value)}</td>
+          <td style="text-align:right">${number(r.n ?? 0)}</td>
+        </tr>
+      `).join('');
+      const foot = `</tbody></table>`;
+      return head + body + foot;
+    }
+
     const btnRanking = document.getElementById('btn-ranking');
-const rankingOut = document.getElementById('ranking-out');
-const rankingMsg = document.getElementById('ranking-msg');
+    const rankingOut = document.getElementById('ranking-out');
+    const rankingMsg = document.getElementById('ranking-msg');
 
-btnRanking.addEventListener('click', async () => {
-  const dept = document.getElementById('dept-code').value.trim().toUpperCase();
-  const period = document.getElementById('period').value;     // "12" | "24"
-  const kind = document.getElementById('kind').value;         // "appart" | "maison"
-  const order = document.getElementById('order').value;       // "asc" | "desc"
+    btnRanking.addEventListener('click', async () => {
+      const dept = document.getElementById('dept-code').value.trim().toUpperCase();
+      const period = document.getElementById('period').value;  // "12" | "24"
+      const kind = document.getElementById('kind').value;      // "appart" | "maison"
+      const order = document.getElementById('order').value;    // "asc" | "desc"
 
-  rankingMsg.textContent = '';
-  rankingOut.innerHTML = '';
+      rankingMsg.textContent = '';
+      rankingOut.innerHTML = '';
 
-  if (!dept) { rankingMsg.textContent = 'Saisissez un code département (ex : 74, 13, 2A, 2B).'; return; }
+      if (!dept) { rankingMsg.textContent = 'Saisissez un code département (ex : 74, 13, 2A, 2B).'; return; }
 
-  try {
-    await ensurePricesLoaded();
-    const dataObj = (period === '12') ? PRICES12 : PRICES24;
-    const rows = makeRanking(dataObj, dept, kind, order);
-    const title = `Département ${dept} • ${period} mois • ${kind === 'appart' ? 'Appartements' : 'Maisons'} • Ordre ${order === 'asc' ? 'croissant' : 'décroissant'}`;
-    rankingOut.innerHTML = renderRankingTable(rows, title);
-  } catch (e) {
-    rankingOut.innerHTML = `<div class="error">Erreur lors du chargement des données.</div>`;
-  }
-});
-
-
-</script>
+      try {
+        await ensurePricesLoaded();
+        const dataObj = (period === '12') ? PRICES12 : PRICES24;
+        const rows = makeRanking(dataObj, dept, kind, order);
+        const title = `Département ${dept} • ${period} mois • ${kind === 'appart' ? 'Appartements' : 'Maisons'} • Ordre ${order === 'asc' ? 'croissant' : 'décroissant'}`;
+        rankingOut.innerHTML = renderRankingTable(rows, title);
+      } catch (e) {
+        rankingOut.innerHTML = `<div class="error">Erreur lors du chargement des données.</div>`;
+      }
+    });
+  </script>
 </body>
 </html>
