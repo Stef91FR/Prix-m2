@@ -1,9 +1,9 @@
 name: Build prices.json
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:            # ⬅️ indispensable pour le bouton "Run workflow"
   schedule:
-    - cron: "0 6 1 * *"  # tous les 1ers du mois à 06:00 UTC
+    - cron: "0 6 1 * *"         # mensuel (facultatif)
 
 permissions:
   contents: write
@@ -16,23 +16,21 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+            python-version: "3.11"
 
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Build prices.json (12 derniers mois)
-        env:
-          DVF_URL: https://files.data.gouv.fr/geo-dvf/latest/csv/2024/full.csv.gz
+      - name: Build prices (12 & 24 mois)
         run: |
           python build_prices.py
 
-   - name: Commit & push prices files
-  run: |
-    git config user.name "github-actions[bot]"
-    git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-    git add prices.json prices_12.json prices_24.json communes.json || true
-    git commit -m "chore: update prices (12 & 24 months)" || echo "No changes"
-    git push
+      - name: Commit & push prices files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add prices.json prices_12.json prices_24.json communes.json || true
+          git commit -m "chore: update prices (12 & 24 months)" || echo "No changes"
+          git push
