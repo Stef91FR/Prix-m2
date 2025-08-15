@@ -1,17 +1,22 @@
 name: Build population.json
+
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
   schedule:
-    - cron: "0 3 * * 1"  # chaque lundi 03:00 UTC
+    - cron: "0 3 * * 1"   # chaque lundi 03:00 UTC
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write       # nécessaire pour pousser le commit
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Python
-      - uses: actions/setup-python@v5
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -21,8 +26,18 @@ jobs:
       - name: Build population.json
         run: python population_build.py
 
-      - name: Commit population.json
+      # ----- Option A : action toute faite pour committer -----
+      - name: Commit & push population.json
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: update population.json"
           file_pattern: "population.json"
+
+      # ----- Option B : si tu préfères sans action externe, commente A et décommente ceci -----
+      # - name: Commit & push (fallback)
+      #   run: |
+      #     git config user.name "github-actions[bot]"
+      #     git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      #     git add population.json
+      #     git commit -m "chore: update population.json" || echo "No changes"
+      #     git push
