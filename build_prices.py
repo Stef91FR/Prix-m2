@@ -13,18 +13,20 @@ Prérequis : duckdb, pandas, requests
 import os, sys, io, json, gzip, datetime, tempfile, pathlib
 from datetime import date, timedelta
 import pandas as pd
-def safe_int(x):
-     try:
+import duckdb
+import requests
+
+def safe_float(x):
+    try:
         return float(x) if pd.notna(x) else None
     except Exception:
         return None
-    # renvoie None si x est NaN/None, sinon int(x)
+
+def safe_int(x):
     try:
         return int(x) if pd.notna(x) else None
     except Exception:
         return None
-import duckdb
-import requests
 
 HERE = pathlib.Path(__file__).parent.resolve()
 OUT_PATH = HERE / "prices.json"
