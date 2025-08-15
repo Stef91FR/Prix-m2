@@ -56,7 +56,86 @@
     </footer>
   </main>
 
+//--- Infos des classements------
+  <div class="card" style="margin-top:16px">
+  <h3 style="margin:0 0 8px">Classement par département</h3>
+
+  <div class="row" style="grid-template-columns: repeat(5, 1fr); gap:8px">
+    <input id="dept-code" type="text" placeholder="Code dép. (ex. 74, 13, 2A, 2B)" />
+    <select id="period">
+      <option value="12">12 mois</option>
+      <option value="24">24 mois</option>
+    </select>
+    <select id="kind">
+      <option value="appart">Appartements</option>
+      <option value="maison">Maisons</option>
+    </select>
+    <select id="order">
+      <option value="desc">Décroissant</option>
+      <option value="asc">Croissant</option>
+    </select>
+    <button id="btn-ranking">Voir</button>
+  </div>
+
+  <div id="ranking-msg" class="muted" style="margin-top:8px"></div>
+  <div id="ranking-out" style="margin-top:8px"></div>
+</div>
+
+  
 <script>
+  //----- Pages des classements -----
+  let PRICES12 = null;
+let PRICES24 = null;
+
+async function ensurePricesLoaded() {
+  if (!PRICES12 || !PRICES24) {
+    [PRICES12, PRICES24] = await Promise.all([
+      loadJSON('prices_12.json'),
+      loadJSON('prices_24.json')
+    ]);
+  }
+}
+//-------- logique du classement--------
+  function makeRanking(dataObj, deptCode, kind, order) {
+  const out = [];
+  for (const [insee, row] of Object.entries(dataObj.data)) {
+    if (!row || row.dept !== deptCode) continue;
+    const val = row[kind];
+    if (val == null) continue; // pas de données pour ce type
+    const n = row.n_ventes?.[kind] ?? null;
+    out.push({
+      insee, ville: row.ville, value: val, n
+    });
+  }
+  out.sort((a,b) => order === 'asc' ? (a.value - b.value) : (b.value - a.value));
+  return out;
+}
+
+function renderRankingTable(rows, title) {
+  if (!rows.length) return `<div class="error">Aucune donnée pour ces critères.</div>`;
+  const head = `
+    <div class="muted" style="margin-bottom:6px">${title}</div>
+    <table style="width:100%; border-collapse:collapse">
+      <thead>
+        <tr>
+          <th style="text-align:left; padding:8px; border-bottom:1px solid #283060">Ville</th>
+          <th style="text-align:right; padding:8px; border-bottom:1px solid #283060">Prix €/m²</th>
+          <th style="text-align:right; padding:8px; border-bottom:1px solid #283060">n ventes</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+  const body = rows.map(r => `
+    <tr>
+      <td style="padding:8px; border-bottom:1px solid #1b2250">${r.ville} (${r.insee})</td>
+      <td style="padding:8px; text-align:right; border-bottom:1px solid #1b2250">${euro(r.value)}</td>
+      <td style="padding:8px; text-align:right; border-bottom:1px solid #1b2250">${number(r.n ?? 0)}</td>
+    </tr>
+  `).join('');
+  const foot = `</tbody></table>`;
+  return head + body + foot;
+}
+
   // ---------- Helpers affichage ----------
   function euro(n){
     if (n == null || Number.isNaN(n)) return "N/A";
@@ -205,7 +284,34 @@ if (pop != null) {
     } finally {
       btnSe.disabled = false; btnSe.textContent = 'Chercher les prix constatés (SeLoger)';
     }
-  });
+    // Handler du bouton VOIR classement-------
+    const btnRanking = document.getElementById('btn-ranking');
+const rankingOut = document.getElementById('ranking-out');
+const rankingMsg = document.getElementById('ranking-msg');
+
+btnRanking.addEventListener('click', async () => {
+  const dept = document.getElementById('dept-code').value.trim().toUpperCase();
+  const period = document.getElementById('period').value;     // "12" | "24"
+  const kind = document.getElementById('kind').value;         // "appart" | "maison"
+  const order = document.getElementById('order').value;       // "asc" | "desc"
+
+  rankingMsg.textContent = '';
+  rankingOut.innerHTML = '';
+
+  if (!dept) { rankingMsg.textContent = 'Saisissez un code département (ex : 74, 13, 2A, 2B).'; return; }
+
+  try {
+    await ensurePricesLoaded();
+    const dataObj = (period === '12') ? PRICES12 : PRICES24;
+    const rows = makeRanking(dataObj, dept, kind, order);
+    const title = `Département ${dept} • ${period} mois • ${kind === 'appart' ? 'Appartements' : 'Maisons'} • Ordre ${order === 'asc' ? 'croissant' : 'décroissant'}`;
+    rankingOut.innerHTML = renderRankingTable(rows, title);
+  } catch (e) {
+    rankingOut.innerHTML = `<div class="error">Erreur lors du chargement des données.</div>`;
+  }
+});
+
+
 </script>
 </body>
 </html>
