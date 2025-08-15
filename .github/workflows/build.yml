@@ -29,10 +29,10 @@ jobs:
         run: |
           python build_prices.py
 
-      - name: Commit & push prices.json
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add prices.json communes.json || true
-          git commit -m "chore: update prices.json" || echo "No changes"
-          git push
+   - name: Commit & push prices files
+  run: |
+    git config user.name "github-actions[bot]"
+    git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+    git add prices.json prices_12.json prices_24.json communes.json || true
+    git commit -m "chore: update prices (12 & 24 months)" || echo "No changes"
+    git push
