@@ -14,6 +14,10 @@ import os, sys, io, json, gzip, datetime, tempfile, pathlib
 from datetime import date, timedelta
 import pandas as pd
 def safe_int(x):
+     try:
+        return float(x) if pd.notna(x) else None
+    except Exception:
+        return None
     # renvoie None si x est NaN/None, sinon int(x)
     try:
         return int(x) if pd.notna(x) else None
@@ -137,8 +141,8 @@ def build_prices(dvf_path: str, communes_json):
         by_code[code] = {
             "ville": c["nom"],
             "dept": c.get("codeDepartement"),
-            "appart": row.get("med_eur_m2_appartement"),
-            "maison": row.get("med_eur_m2_maison"),
+           "appart": safe_float(row.get("med_eur_m2_appartement")),
+           "maison": safe_float(row.get("med_eur_m2_maison")),
             "n_ventes": {
     "appart": safe_int(row.get("n_appartement")),
     "maison": safe_int(row.get("n_maison"))
@@ -152,7 +156,7 @@ def build_prices(dvf_path: str, communes_json):
         "data": by_code
     }
     with open(OUT_PATH, "w", encoding="utf-8") as f:
-        json.dump(out, f, ensure_ascii=False)
+        json.dump(out, f, ensure_ascii=False, allow_nan=False)
     print(f"✓ Écrit {OUT_PATH} ({OUT_PATH.stat().st_size/1_048_576:.1f} MiB, {len(by_code)} communes)")
 
 def main():
