@@ -31,10 +31,11 @@ async function getJSON(url) {
   return r.json();
 }
 
+// ---------- IMPORTANT : toutes les récup pages HTML passent ici ----------
 async function getText(url) {
   const key = process.env.SCRAPFLY_KEY;
 
-  // Si pas de clé (au cas où) : on tente un fetch direct (probablement 403)
+  // Pas de clé -> tentative en direct (souvent 403)
   if (!key) {
     const r = await fetch(url, {
       headers: {
@@ -47,8 +48,7 @@ async function getText(url) {
     return { ok: r.ok, status: r.status, ct: r.headers.get('content-type') || '', text: r.ok ? await r.text() : '' };
   }
 
-  // Passage par Scrapfly (anti-bot/proxy). On active asp (anti-scraping) et quelques options de robustesse.
-  // NB: si jamais une page nécessite du JS, on pourra ajouter &render_js=true (plus cher et plus lent).
+  // Passage via Scrapfly (anti-bot/proxy). Si besoin, ajouter &render_js=true (plus lent & plus cher).
   const api = `https://api.scrapfly.io/scrape?key=${key}` +
               `&url=${encodeURIComponent(url)}` +
               `&country=fr&asp=true&retry=2&timeout=30000`;
@@ -58,11 +58,35 @@ async function getText(url) {
     return { ok: false, status: r.status, ct: r.headers.get('content-type') || '', text: '' };
   }
   const data = await r.json();
-  // Selon Scrapfly, le HTML est dans result.content (ou content)
   const html = data?.result?.content || data?.content || '';
   return { ok: !!html, status: html ? 200 : 500, ct: 'text/html', text: html };
 }
 
+// ------------------------------------------------------------------------
+
+module.exports = async (req, res) => {
+  try {
+    const { name, insee, debug } = req.query;
+    if (!name || !insee) {
+      res.status(400).json({ error: 'missing params: name,insee' });
+      return;
+    }
+
+    // 1) Région / département / CP via geo.api.gouv.fr
+    let regionNom = null, deptNom = null, deptCode = null, cp = null;
+    try {
+      const commune = await getJSON(
+        `https://geo.api.gouv.fr/communes/${encodeURIComponent(insee)}?fields=nom,codesPostaux,departement&format=json`
+      );
+      cp       = Array.isArray(commune?.codesPostaux) && commune.codesPostaux.length ? commune.codesPostaux[0] : null;
+      deptNom  = commune?.departement?.nom  || null;
+      deptCode = commune?.departement?.code || null;
+      if (deptCode) {
+        const dep = await getJSON(`https://geo.api.gouv.fr/departements/${deptCode}?fields=nom,codeRegion`);
+        if (dep?.codeRegion) {
+          const reg = await getJSON(`https://geo.api.gouv.fr/regions/${dep.codeRegion}?fields=nom`);
+          regionNom = reg?.nom || null;
+        }
       }
     } catch (_) {}
 
@@ -71,7 +95,7 @@ async function getText(url) {
     const regionSlug = regionNom ? slug(regionNom) : null;
     const cpSlug     = cp ? String(cp) : '';
 
-    // 2) Génération d’URLs candidates (du plus “précis” au plus simple)
+    // 2) URLs candidates (du plus précis au plus simple)
     const candidates = [];
     if (regionSlug && deptSlug && cpSlug)
       candidates.push(`https://www.seloger.com/prix-de-l-immo/vente/${regionSlug}/${deptSlug}/${citySlug}-${cpSlug}/`);
@@ -83,7 +107,7 @@ async function getText(url) {
       candidates.push(`https://www.seloger.com/prix-de-l-immo/vente/${citySlug}-${cpSlug}/`);
     candidates.push(`https://www.seloger.com/prix-de-l-immo/vente/${citySlug}.htm`);
 
-    // 3) Essais + fallback moteur de recherche
+    // 3) Essai des URLs + fallback moteur
     const tried = [];
     let html = null, finalUrl = null;
 
@@ -94,7 +118,6 @@ async function getText(url) {
     }
 
     if (!html) {
-      // DuckDuckGo (premier lien seloger prix-vente)
       const q = `site:seloger.com "prix de l'immo" vente ${name}`;
       const { text: ddgHtml } = await getText(`https://duckduckgo.com/html/?q=${encodeURIComponent(q)}`);
       const m = ddgHtml.match(/https?:\/\/www\.seloger\.com\/prix-de-l-immo\/vente\/[^\s"']+/i);
@@ -111,7 +134,7 @@ async function getText(url) {
       return;
     }
 
-    // 4) Parsing robuste
+    // 4) Parsing
     const $ = cheerio.load(html);
     const body = $('body').text().replace(/\s+/g, ' ');
 
