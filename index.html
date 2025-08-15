@@ -59,28 +59,35 @@
 
     <!-- Bloc CLASSEMENT -->
     <div class="card" style="margin-top:16px">
-      <h3 style="margin:0 0 8px">Classement par département</h3>
+  <h3 style="margin:0 0 8px">Classement par département</h3>
 
-      <div class="row" style="grid-template-columns: repeat(5, 1fr); gap:8px">
-        <input id="dept-code" type="text" placeholder="Code dép. (ex. 74, 13, 2A, 2B)" />
-        <select id="period">
-          <option value="12">12 mois</option>
-          <option value="24">24 mois</option>
-        </select>
-        <select id="kind">
-          <option value="appart">Appartements</option>
-          <option value="maison">Maisons</option>
-        </select>
-        <select id="order">
-          <option value="desc">Décroissant</option>
-          <option value="asc">Croissant</option>
-        </select>
-        <button id="btn-ranking">Voir</button>
-      </div>
+  <div class="row" style="grid-template-columns: repeat(8, 1fr); gap:8px">
+    <input id="dept-code" type="text" placeholder="Code dép. (ex. 74, 13, 2A, 2B)" />
+    <select id="period">
+      <option value="12">12 mois</option>
+      <option value="24">24 mois</option>
+    </select>
+    <select id="kind">
+      <option value="appart">Appartements</option>
+      <option value="maison">Maisons</option>
+    </select>
+    <select id="order">
+      <option value="desc">Décroissant</option>
+      <option value="asc">Croissant</option>
+    </select>
+    <select id="sortby" title="Critère de tri">
+      <option value="price">Trier par prix</option>
+      <option value="pop">Trier par population</option>
+    </select>
+    <input id="pop-min" type="number" placeholder="Hab. mini" />
+    <input id="pop-max" type="number" placeholder="Hab. maxi" />
+    <button id="btn-ranking">Voir</button>
+  </div>
 
-      <div id="ranking-msg" class="muted" style="margin-top:8px"></div>
-      <div id="ranking-out" style="margin-top:8px"></div>
-    </div>
+  <div id="ranking-msg" class="muted" style="margin-top:8px"></div>
+  <div id="ranking-out" style="margin-top:8px"></div>
+</div>
+
 
     <footer>
       <p>Sources : <a href="https://api-adresse.data.gouv.fr" target="_blank" rel="noreferrer">API Adresse</a> &nbsp;•&nbsp; DVF (Etalab/DGFIP)</p>
