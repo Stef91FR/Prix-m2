@@ -48,7 +48,9 @@
       <div id="suggestions" class="muted" style="margin-top:8px"></div>
       <div id="msg" style="margin-top:12px"></div>
       <div id="out" class="result"></div>
-    </div>
+      <button id="btn-seloger" style="margin-top:12px">Chercher les prix constatés (SeLoger)</button>
+      <div id="seloger-out" class="result"></div>
+        </div>
     <footer>
       <p>Sources : <a href="https://api-adresse.data.gouv.fr" target="_blank" rel="noreferrer">API Adresse</a> &nbsp;•&nbsp; DVF (Etalab/DGFIP)</p>
     </footer>
@@ -151,6 +153,33 @@
         out.classList.add('show');
       } finally {
         btn.disabled = false; btn.textContent = 'Rechercher';
+         const btnSe = document.getElementById('btn-seloger');
+  const seOut = document.getElementById('seloger-out');
+
+  btnSe.addEventListener('click', async () => {
+    if (!chosen) { msg.innerHTML = '<div class="error">Choisissez d’abord une commune.</div>'; return; }
+    btnSe.disabled = true; btnSe.textContent = 'Recherche SeLoger…';
+    try {
+      const url = `/api/seloger?name=${encodeURIComponent(chosen.name)}&insee=${encodeURIComponent(chosen.code_insee)}&dept=${encodeURIComponent(chosen.code_insee.slice(0,2))}`;
+      const r = await fetch(url);
+      const s = await r.json();
+
+      seOut.classList.add('show');
+      seOut.innerHTML = `
+        <div class="muted" style="margin:10px 0 4px">Prix constatés (SeLoger)</div>
+        <div class="stats">
+          <div class="stat"><h3>Appartements</h3><div class="val">${euro(s.appart)}</div></div>
+          <div class="stat"><h3>Maisons</h3><div class="val">${euro(s.maison)}</div></div>
+        </div>
+        <div class="muted" style="margin-top:6px">
+          ${s.source_url ? `Source : <a href="${s.source_url}" target="_blank" rel="noreferrer">SeLoger</a>` : `Non disponible pour cette commune`}
+        </div>
+      `;
+    } catch (e) {
+      seOut.classList.add('show');
+      seOut.innerHTML = `<div class="error">Erreur SeLoger.</div>`;
+    } finally {
+      btnSe.disabled = false; btnSe.textContent = 'Chercher les prix constatés (SeLoger)';
       }
     });
   </script>
