@@ -263,31 +263,32 @@
 }
 
   function renderRankingTable(rows, title) {
-    if (!rows.length) return `<div class="error">Aucune donnée pour ces critères.</div>`;
-    const head = `
-      <div class="muted" style="margin-bottom:6px">${title}</div>
-      <table>
-        <thead>
-          <tr>
-            <th style="text-align:left">Ville</th>
-            <th style="text-align:right">Population</th>
-            <th style="text-align:right">Prix €/m²</th>
-            <th style="text-align:right">n ventes</th>
-          </tr>
-        </thead>
-        <tbody>
-    `;
-    const body = rows.map(r => `
-      <tr>
-        <td>${r.ville} (${r.insee})</td>
-        <td style="text-align:right">${number(r.pop)}</td>
-        <td style="text-align:right">${euro(r.value)}</td>
-        <td style="text-align:right">${number(r.n ?? 0)}</td>
-      </tr>
-    `).join('');
-    const foot = `</tbody></table>`;
-    return head + body + foot;
-  }
+  if (!rows.length) return `<div class="error">Aucune donnée pour ces critères.</div>`;
+  const head = `
+    <div class="muted" style="margin-bottom:6px">${title}</div>
+    <table style="width:100%; border-collapse:collapse">
+      <thead>
+        <tr>
+          <th style="text-align:left; padding:8px; border-bottom:1px solid #283060">Ville</th>
+          <th style="text-align:right; padding:8px; border-bottom:1px solid #283060">Population</th>
+          <th style="text-align:right; padding:8px; border-bottom:1px solid #283060">Prix €/m²</th>
+          <th style="text-align:right; padding:8px; border-bottom:1px solid #283060">n ventes</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+  const body = rows.map(r => `
+    <tr>
+      <td style="padding:8px; border-bottom:1px solid #1b2250">${r.ville} (${r.insee})</td>
+      <td style="padding:8px; text-align:right; border-bottom:1px solid #1b2250">${number(r.pop)}</td>
+      <td style="padding:8px; text-align:right; border-bottom:1px solid #1b2250">${euro(r.value)}</td>
+      <td style="padding:8px; text-align:right; border-bottom:1px solid #1b2250">${number(r.n ?? 0)}</td>
+    </tr>
+  `).join('');
+  const foot = `</tbody></table>`;
+  return head + body + foot;
+}
+
 
   const btnRanking = document.getElementById('btn-ranking');
   const rankingOut = document.getElementById('ranking-out');
