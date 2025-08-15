@@ -68,6 +68,13 @@
     if(!r.ok) throw new Error('HTTP ' + r.status);
     return await r.json();
   }
+  //-------- Population ------
+  async function fetchPopulation(insee) {
+  const r = await fetch(`https://geo.api.gouv.fr/communes/${encodeURIComponent(insee)}?fields=nom,population&format=json`);
+  if (!r.ok) return null;
+  const j = await r.json();
+  return j.population ?? null;
+}
 
   // ---------- DOM ----------
   const $ = (s) => document.querySelector(s);
@@ -161,6 +168,15 @@
     } finally {
       btn.disabled = false; btn.textContent = 'Rechercher';
     }
+    const pop = await fetchPopulation(chosen.code_insee);
+if (pop != null) {
+  const popDiv = document.createElement('div');
+  popDiv.className = 'muted';
+  popDiv.style.marginTop = '8px';
+  popDiv.textContent = `Population municipale (dernier recensement INSEE) : ${number(pop)} habitants`;
+  out.appendChild(popDiv);
+}
+
   });
 
   // ---------- Bouton SeLoger ----------
