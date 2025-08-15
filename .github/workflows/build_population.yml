@@ -1,0 +1,28 @@
+name: Build population.json
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 3 * * 1"  # chaque lundi 03:00 UTC
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install requests
+
+      - name: Build population.json
+        run: python population_build.py
+
+      - name: Commit population.json
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update population.json"
+          file_pattern: "population.json"
