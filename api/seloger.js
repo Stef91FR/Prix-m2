@@ -32,38 +32,37 @@ async function getJSON(url) {
 }
 
 async function getText(url) {
-  const r = await fetch(url, {
-    headers: {
-      'user-agent': UA,
-      'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'accept-language': 'fr-FR,fr;q=0.9,en;q=0.8',
-      'cache-control': 'no-cache'
-    }
-  });
-  return { ok: r.ok, status: r.status, ct: r.headers.get('content-type') || '', text: r.ok ? await r.text() : '' };
+  const key = process.env.SCRAPFLY_KEY;
+
+  // Si pas de clé (au cas où) : on tente un fetch direct (probablement 403)
+  if (!key) {
+    const r = await fetch(url, {
+      headers: {
+        'user-agent': UA,
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'accept-language': 'fr-FR,fr;q=0.9,en;q=0.8',
+        'cache-control': 'no-cache'
+      }
+    });
+    return { ok: r.ok, status: r.status, ct: r.headers.get('content-type') || '', text: r.ok ? await r.text() : '' };
+  }
+
+  // Passage par Scrapfly (anti-bot/proxy). On active asp (anti-scraping) et quelques options de robustesse.
+  // NB: si jamais une page nécessite du JS, on pourra ajouter &render_js=true (plus cher et plus lent).
+  const api = `https://api.scrapfly.io/scrape?key=${key}` +
+              `&url=${encodeURIComponent(url)}` +
+              `&country=fr&asp=true&retry=2&timeout=30000`;
+
+  const r = await fetch(api, { headers: { 'user-agent': UA } });
+  if (!r.ok) {
+    return { ok: false, status: r.status, ct: r.headers.get('content-type') || '', text: '' };
+  }
+  const data = await r.json();
+  // Selon Scrapfly, le HTML est dans result.content (ou content)
+  const html = data?.result?.content || data?.content || '';
+  return { ok: !!html, status: html ? 200 : 500, ct: 'text/html', text: html };
 }
 
-module.exports = async (req, res) => {
-  try {
-    const { name, insee, debug } = req.query;
-    if (!name || !insee) {
-      res.status(400).json({ error: 'missing params: name,insee' });
-      return;
-    }
-
-    // 1) Région / département / codes postaux via geo.api.gouv.fr
-    let regionNom = null, deptNom = null, deptCode = null, cp = null;
-    try {
-      const commune = await getJSON(`https://geo.api.gouv.fr/communes/${encodeURIComponent(insee)}?fields=nom,codesPostaux,departement&format=json`);
-      cp = Array.isArray(commune?.codesPostaux) && commune.codesPostaux.length ? commune.codesPostaux[0] : null;
-      deptNom = commune?.departement?.nom || null;
-      deptCode = commune?.departement?.code || null;
-      if (deptCode) {
-        const dep = await getJSON(`https://geo.api.gouv.fr/departements/${deptCode}?fields=nom,codeRegion`);
-        if (dep?.codeRegion) {
-          const reg = await getJSON(`https://geo.api.gouv.fr/regions/${dep.codeRegion}?fields=nom`);
-          regionNom = reg?.nom || null;
-        }
       }
     } catch (_) {}
 
