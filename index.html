@@ -56,106 +56,114 @@
     </footer>
   </main>
 
-  <script>
-    // ---------- Helpers affichage ----------
-    function euro(n){
-      if (n == null || Number.isNaN(n)) return "N/A";
-      return new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR', maximumFractionDigits: 0 }).format(n);
-    }
-    function number(n){ return new Intl.NumberFormat('fr-FR').format(n ?? 0); }
-    async function loadJSON(url){
-      const r = await fetch(url + '?nocache=' + Date.now(), { cache: 'no-store' });
-      if(!r.ok) throw new Error('HTTP ' + r.status);
-      return await r.json();
-    }
+<script>
+  // ---------- Helpers affichage ----------
+  function euro(n){
+    if (n == null || Number.isNaN(n)) return "N/A";
+    return new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR', maximumFractionDigits: 0 }).format(n);
+  }
+  function number(n){ return new Intl.NumberFormat('fr-FR').format(n ?? 0); }
+  async function loadJSON(url){
+    const r = await fetch(url + '?nocache=' + Date.now(), { cache: 'no-store' });
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  }
 
-    // ---------- DOM ----------
-    const $ = (s) => document.querySelector(s);
-    const villeInput = $('#ville');
-    const btn = $('#btn');
-    const suggestions = $('#suggestions');
-    const msg = $('#msg');
-    const out = $('#out');
-    let chosen = null; // {name, code_insee}
+  // ---------- DOM ----------
+  const $ = (s) => document.querySelector(s);
+  const villeInput = $('#ville');
+  const btn = $('#btn');
+  const suggestions = $('#suggestions');
+  const msg = $('#msg');
+  const out = $('#out');
+  const btnSe = document.getElementById('btn-seloger');
+  const seOut = document.getElementById('seloger-out');
+  let chosen = null; // {name, code_insee}
 
-    // ---------- Autocomplétion API Adresse ----------
-    async function searchAdresse(q){
-      if(!q || q.length < 2) { suggestions.innerHTML = ''; btn.disabled = true; return; }
-      suggestions.innerHTML = 'Recherche… <span class="loader"></span>';
-      try{
-        const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&type=municipality&autocomplete=1&limit=5`;
-        const res = await fetch(url);
-        const data = await res.json();
-        if(!data.features.length){ suggestions.innerHTML = '<span class="muted">Aucune commune trouvée.</span>'; btn.disabled = true; return; }
-        suggestions.innerHTML = data.features.map((f) => {
-          const name = f.properties.label;
-          const code = f.properties.citycode;
-          return `<div class="sug" data-code="${code}" data-name="${name}" style="padding:6px 8px; border:1px solid #283060; background:#0b1128; border-radius:10px; margin-top:6px; cursor:pointer">${name} <span class="muted">(${code})</span></div>`;
-        }).join('');
-        suggestions.querySelectorAll('.sug').forEach(div => {
-          div.addEventListener('click', () => {
-            chosen = { name: div.dataset.name, code_insee: div.dataset.code };
-            villeInput.value = div.dataset.name;
-            suggestions.innerHTML = `<span class="muted">Commune sélectionnée : ${chosen.name} (${chosen.code_insee})</span>`;
-            btn.disabled = false;
-            villeInput.blur();
-          });
+  // ---------- Autocomplétion ----------
+  async function searchAdresse(q){
+    if(!q || q.length < 2) { suggestions.innerHTML = ''; btn.disabled = true; return; }
+    suggestions.innerHTML = 'Recherche… <span class="loader"></span>';
+    try{
+      const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&type=municipality&autocomplete=1&limit=5`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if(!data.features.length){ suggestions.innerHTML = '<span class="muted">Aucune commune trouvée.</span>'; btn.disabled = true; return; }
+      suggestions.innerHTML = data.features.map((f) => {
+        const name = f.properties.label;
+        const code = f.properties.citycode;
+        return `<div class="sug" data-code="${code}" data-name="${name}" style="padding:6px 8px; border:1px solid #283060; background:#0b1128; border-radius:10px; margin-top:6px; cursor:pointer">${name} <span class="muted">(${code})</span></div>`;
+      }).join('');
+      suggestions.querySelectorAll('.sug').forEach(div => {
+        div.addEventListener('click', () => {
+          chosen = { name: div.dataset.name, code_insee: div.dataset.code };
+          villeInput.value = div.dataset.name;
+          suggestions.innerHTML = `<span class="muted">Commune sélectionnée : ${chosen.name} (${chosen.code_insee})</span>`;
+          btn.disabled = false;
+          villeInput.blur();
         });
-      } catch(e){
-        suggestions.innerHTML = '<div class="error">Erreur de l’API Adresse.</div>';
-        btn.disabled = true;
-      }
+      });
+    } catch(e){
+      suggestions.innerHTML = '<div class="error">Erreur de l’API Adresse.</div>';
+      btn.disabled = true;
     }
-    villeInput.addEventListener('input', (e) => {
-      chosen = null;
-      out.classList.remove('show');
-      out.innerHTML = '';
-      searchAdresse(e.target.value);
-    });
+  }
+  villeInput.addEventListener('input', (e) => {
+    chosen = null;
+    out.classList.remove('show');
+    out.innerHTML = '';
+    seOut.classList.remove('show');
+    seOut.innerHTML = '';
+    searchAdresse(e.target.value);
+  });
 
-    // ---------- Recherche prix ----------
-    btn.addEventListener('click', async () => {
-      msg.innerHTML = '';
-      out.classList.remove('show');
-      out.innerHTML = '';
-      if(!chosen){ msg.innerHTML = '<div class="error">Choisissez d’abord une commune.</div>'; return; }
-      btn.disabled = true; btn.textContent = 'Chargement…';
-      try {
-        const [p12, p24] = await Promise.all([
-          loadJSON('prices_12.json'),
-          loadJSON('prices_24.json')
-        ]);
-        const r12 = p12.data[chosen.code_insee];
-        const r24 = p24.data[chosen.code_insee];
+  // ---------- Bouton principal (12 et 24 mois) ----------
+  btn.addEventListener('click', async () => {
+    msg.innerHTML = '';
+    out.classList.remove('show');
+    out.innerHTML = '';
+    seOut.classList.remove('show');
+    seOut.innerHTML = '';
 
-        function card(title, row, periode, devise){
-          if(!row) return `<div class="error">Pas de données pour ${title.toLowerCase()}.</div>`;
-          return `
-            <div class="muted" style="margin:10px 0 4px">${title} — Période : ${periode} • Unité : ${devise}</div>
-            <div class="stats">
-              <div class="stat"><h3>Appartements</h3><div class="val">${euro(row.appart)}</div><div class="muted">médiane — n=${number(row.n_ventes.appart)}</div></div>
-              <div class="stat"><h3>Maisons</h3><div class="val">${euro(row.maison)}</div><div class="muted">médiane — n=${number(row.n_ventes.maison)}</div></div>
-            </div>
-          `;
-        }
+    if(!chosen){ msg.innerHTML = '<div class="error">Choisissez d’abord une commune.</div>'; return; }
+    btn.disabled = true; btn.textContent = 'Chargement…';
+    try {
+      const [p12, p24] = await Promise.all([
+        loadJSON('prices_12.json'),
+        loadJSON('prices_24.json')
+      ]);
+      const r12 = p12.data[chosen.code_insee];
+      const r24 = p24.data[chosen.code_insee];
 
-        out.innerHTML = `
-          ${card('12 derniers mois glissants', r12, p12.periode, p12.devise)}
-          <hr style="border:0;border-top:1px solid #283060;margin:14px 0">
-          ${card('24 derniers mois glissants', r24, p24.periode, p24.devise)}
-          <div class="muted" style="margin-top:8px">
-            Commune : <b>${(r12||r24)?.ville ?? chosen.name}</b> (${chosen.code_insee})
+      function card(title, row, periode, devise){
+        if(!row) return `<div class="error">Pas de données pour ${title.toLowerCase()}.</div>`;
+        return `
+          <div class="muted" style="margin:10px 0 4px">${title} — Période : ${periode} • Unité : ${devise}</div>
+          <div class="stats">
+            <div class="stat"><h3>Appartements</h3><div class="val">${euro(row.appart)}</div><div class="muted">médiane — n=${number(row.n_ventes.appart)}</div></div>
+            <div class="stat"><h3>Maisons</h3><div class="val">${euro(row.maison)}</div><div class="muted">médiane — n=${number(row.n_ventes.maison)}</div></div>
           </div>
         `;
-        out.classList.add('show');
-      } catch (err) {
-        out.innerHTML = `<div class="error">Impossible de charger les données.</div>`;
-        out.classList.add('show');
-      } finally {
-        btn.disabled = false; btn.textContent = 'Rechercher';
-         const btnSe = document.getElementById('btn-seloger');
-  const seOut = document.getElementById('seloger-out');
+      }
 
+      out.innerHTML = `
+        ${card('12 derniers mois glissants', r12, p12.periode, p12.devise)}
+        <hr style="border:0;border-top:1px solid #283060;margin:14px 0">
+        ${card('24 derniers mois glissants', r24, p24.periode, p24.devise)}
+        <div class="muted" style="margin-top:8px">
+          Commune : <b>${(r12||r24)?.ville ?? chosen.name}</b> (${chosen.code_insee})
+        </div>
+      `;
+      out.classList.add('show');
+    } catch (err) {
+      out.innerHTML = `<div class="error">Impossible de charger les données.</div>`;
+      out.classList.add('show');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Rechercher';
+    }
+  });
+
+  // ---------- Bouton SeLoger ----------
   btnSe.addEventListener('click', async () => {
     if (!chosen) { msg.innerHTML = '<div class="error">Choisissez d’abord une commune.</div>'; return; }
     btnSe.disabled = true; btnSe.textContent = 'Recherche SeLoger…';
@@ -180,8 +188,8 @@
       seOut.innerHTML = `<div class="error">Erreur SeLoger.</div>`;
     } finally {
       btnSe.disabled = false; btnSe.textContent = 'Chercher les prix constatés (SeLoger)';
-      }
-    });
-  </script>
+    }
+  });
+</script>
 </body>
 </html>
