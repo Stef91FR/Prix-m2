@@ -25,7 +25,7 @@ jobs:
 
       - name: Build prices.json (12 derniers mois)
         env:
-          DVF_URL: https://files.data.gouv.fr/geo-dvf/latest/csv/transactions.csv.gz
+          DVF_URL: https://files.data.gouv.fr/geo-dvf/latest/csv/2024/full.csv.gz
         run: |
           python build_prices.py
 
