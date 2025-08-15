@@ -1,0 +1,107 @@
+{
+  "periode": "2024-08 à 2025-07 (12 mois)",
+  "devise": "EUR/m²",
+  "source": "DVF (agrégées hors-ligne) — exemple",
+  "data": {
+    "75056": {
+      "ville": "Paris",
+      "dept": "75",
+      "appart": 10300,
+      "maison": 11800,
+      "n_ventes": {
+        "appart": 28000,
+        "maison": 900
+      }
+    },
+    "69385": {
+      "ville": "Lyon",
+      "dept": "69",
+      "appart": 5200,
+      "maison": 6200,
+      "n_ventes": {
+        "appart": 6200,
+        "maison": 900
+      }
+    },
+    "33063": {
+      "ville": "Bordeaux",
+      "dept": "33",
+      "appart": 4800,
+      "maison": 5200,
+      "n_ventes": {
+        "appart": 3800,
+        "maison": 1600
+      }
+    },
+    "13055": {
+      "ville": "Marseille",
+      "dept": "13",
+      "appart": 3600,
+      "maison": 4100,
+      "n_ventes": {
+        "appart": 7200,
+        "maison": 2100
+      }
+    },
+    "31555": {
+      "ville": "Toulouse",
+      "dept": "31",
+      "appart": 3800,
+      "maison": 4200,
+      "n_ventes": {
+        "appart": 6100,
+        "maison": 1700
+      }
+    },
+    "44109": {
+      "ville": "Nantes",
+      "dept": "44",
+      "appart": 4100,
+      "maison": 4600,
+      "n_ventes": {
+        "appart": 3500,
+        "maison": 1300
+      }
+    },
+    "35238": {
+      "ville": "Rennes",
+      "dept": "35",
+      "appart": 4100,
+      "maison": 4300,
+      "n_ventes": {
+        "appart": 2800,
+        "maison": 1000
+      }
+    },
+    "34172": {
+      "ville": "Montpellier",
+      "dept": "34",
+      "appart": 3800,
+      "maison": 4300,
+      "n_ventes": {
+        "appart": 3700,
+        "maison": 1200
+      }
+    },
+    "59350": {
+      "ville": "Lille",
+      "dept": "59",
+      "appart": 3600,
+      "maison": 3300,
+      "n_ventes": {
+        "appart": 3000,
+        "maison": 1800
+      }
+    },
+    "67482": {
+      "ville": "Strasbourg",
+      "dept": "67",
+      "appart": 3800,
+      "maison": 4400,
+      "n_ventes": {
+        "appart": 2600,
+        "maison": 800
+      }
+    }
+  }
+}

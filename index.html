@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Prix au m² — Maisons & Appartements (France)</title>
+  <link rel="preconnect" href="https://api-adresse.data.gouv.fr">
+  <style>
+    :root { --radius: 16px; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif; line-height: 1.4; margin: 0; background: #0b1020; color: #eef2ff; }
+    header { padding: 24px 16px; text-align: center; background: linear-gradient(180deg,#141a33,#0b1020); border-bottom: 1px solid #1b2250; }
+    h1 { margin: 0 0 8px; font-size: clamp(20px, 3vw, 28px); }
+    p.sub { margin: 0; opacity: .8; }
+    main { max-width: 800px; margin: 24px auto; padding: 0 16px 64px; }
+    .card { background: #0f1631; border: 1px solid #1b2250; border-radius: var(--radius); padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    input[type="text"] { width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid #283060; background: #0b1128; color: #e6e9ff; outline: none; }
+    button { padding: 12px 16px; border-radius: 12px; border: 1px solid #283060; background: #3240ff; color: white; cursor: pointer; font-weight: 600; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    small.hint { display: block; margin-top: 8px; color: #aabbff; opacity: .8; }
+    .result { margin-top: 16px; display: none; }
+    .result.show { display: block; }
+    .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 12px; }
+    .stat { background: #0b1128; border: 1px solid #283060; border-radius: 12px; padding: 12px; }
+    .stat h3 { margin: 0 0 4px; font-size: 14px; opacity: .9; }
+    .stat .val { font-size: 22px; font-weight: 800; }
+    .muted { opacity: .7; font-size: 12px; }
+    footer { margin-top: 24px; text-align: center; opacity: .7; font-size: 12px; }
+    .error { background: #2b1130; border: 1px solid #602850; color: #ffd1df; border-radius: 12px; padding: 10px 12px; }
+    .loader { display:inline-block; width: 18px; height: 18px; border: 3px solid rgba(255,255,255,.25); border-top-color: white; border-radius: 50%; animation: spin 1s linear infinite; vertical-align: middle; margin-left: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Prix au m² — France</h1>
+    <p class="sub">Maisons & Appartements — période glissante 12 mois (exemple de données)</p>
+  </header>
+  <main>
+    <div class="card">
+      <label for="ville">Ville</label>
+      <div class="row" style="margin-top:8px">
+        <input id="ville" type="text" placeholder="Tapez une ville (ex. Bordeaux)" autocomplete="off" />
+        <button id="btn" disabled>Rechercher</button>
+      </div>
+      <small class="hint">Astuce : choisissez la <b>commune</b> exacte dans la liste proposée (API Adresse).</small>
+      <div id="suggestions" class="muted" style="margin-top:8px"></div>
+      <div id="msg" style="margin-top:12px"></div>
+      <div id="out" class="result"></div>
+    </div>
+    <footer>
+      <p>Sources : <a href="https://api-adresse.data.gouv.fr" target="_blank" rel="noreferrer">API Adresse</a> &nbsp;•&nbsp; <a href="#" onclick="alert('Les prix affichés sont des exemples. Remplacez prices.json par vos agrégats DVF.'); return false;">Exemple DVF</a></p>
+    </footer>
+  </main>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const villeInput = $('#ville');
+    const btn = $('#btn');
+    const suggestions = $('#suggestions');
+    const msg = $('#msg');
+    const out = $('#out');
+    let chosen = null; // {name, code_insee}
+
+    function euro(n){ return new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR', maximumFractionDigits: 0 }).format(n); }
+    function number(n){ return new Intl.NumberFormat('fr-FR').format(n); }
+
+    async function searchAdresse(q){
+      if(!q || q.length < 2) { suggestions.innerHTML = ''; btn.disabled = true; return; }
+      suggestions.innerHTML = 'Recherche… <span class="loader"></span>';
+      try{
+        const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&type=municipality&autocomplete=1&limit=5`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if(!data.features.length){ suggestions.innerHTML = '<span class="muted">Aucune commune trouvée.</span>'; btn.disabled = true; return; }
+        // Build list
+        suggestions.innerHTML = data.features.map((f, i) => {
+          const name = f.properties.label;
+          const code = f.properties.citycode;
+          return `<div class="sug" data-code="${code}" data-name="${name}" style="padding:6px 8px; border:1px solid #283060; background:#0b1128; border-radius:10px; margin-top:6px; cursor:pointer">${name} <span class="muted">(${code})</span></div>`;
+        }).join('');
+        // click binding
+        suggestions.querySelectorAll('.sug').forEach(div => {
+          div.addEventListener('click', () => {
+            chosen = { name: div.dataset.name, code_insee: div.dataset.code };
+            villeInput.value = div.dataset.name;
+            suggestions.innerHTML = `<span class="muted">Commune sélectionnée : ${chosen.name} (${chosen.code_insee})</span>`;
+            btn.disabled = false;
+            villeInput.blur();
+          });
+        });
+      } catch(e){
+        suggestions.innerHTML = '<div class="error">Erreur de l’API Adresse.</div>';
+        btn.disabled = true;
+      }
+    }
+
+    villeInput.addEventListener('input', (e) => {
+      chosen = null;
+      out.classList.remove('show');
+      out.innerHTML = '';
+      searchAdresse(e.target.value);
+    });
+
+    btn.addEventListener('click', async () => {
+      msg.innerHTML = '';
+      out.classList.remove('show');
+      out.innerHTML = '';
+      if(!chosen){ msg.innerHTML = '<div class="error">Choisissez d’abord une commune dans les suggestions.</div>'; return; }
+      btn.disabled = true;
+      btn.textContent = 'Chargement…';
+
+      try{
+        const res = await fetch('prices.json', { cache: 'no-store' });
+        const prices = await res.json();
+        const row = prices.data[chosen.code_insee];
+        if(!row){
+          out.innerHTML = `<div class="error">Pas de données pour <b>${chosen.name}</b> (${chosen.code_insee}). Remplacez <code>prices.json</code> par vos agrégats DVF.</div>`;
+          out.classList.add('show');
+        } else {
+          out.innerHTML = `
+            <div class="stats">
+              <div class="stat">
+                <h3>Appartements</h3>
+                <div class="val">${euro(row.appart)}</div>
+                <div class="muted">médiane — n=${number(row.n_ventes.appart)}</div>
+              </div>
+              <div class="stat">
+                <h3>Maisons</h3>
+                <div class="val">${euro(row.maison)}</div>
+                <div class="muted">médiane — n=${number(row.n_ventes.maison)}</div>
+              </div>
+            </div>
+            <div class="muted" style="margin-top:8px">Commune : <b>${row.ville}</b> (${chosen.code_insee}) • Période : ${prices.periode} • Unité : ${prices.devise}</div>
+          `;
+          out.classList.add('show');
+        }
+      } catch(e){
+        out.innerHTML = '<div class="error">Impossible de charger <code>prices.json</code>.</div>';
+        out.classList.add('show');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Rechercher';
+      }
+    });
+  </script>
+</body>
+</html>
