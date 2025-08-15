@@ -12,6 +12,134 @@ Prérequis : duckdb, pandas, requests
 """
 import os, sys, io, json, gzip, datetime, tempfile, pathlib
 from datetime import date, timedelta
+today = date.today()
+
+def years_to_fetch(max_back_months=24):
+    # on récupère jusqu’à 3 années pour couvrir 24 mois glissants (cas janvier/février)
+    y = today.year
+    return [y, y-1, y-2]
+
+def path_or_download_dvf_multi():
+    # télécharge 1 à 3 fichiers annuels si nécessaires, renvoie la liste de chemins
+    import os, pathlib
+    HERE = pathlib.Path(__file__).parent.resolve()
+    paths = []
+    for y in years_to_fetch():
+        url = f"https://files.data.gouv.fr/geo-dvf/latest/csv/{y}/full.csv.gz"
+        dest = HERE / f"dvf_{y}.csv.gz"
+        if not dest.exists():
+            try:
+                download(url, dest)
+            except Exception:
+                # année pas (encore) dispo → on ignore
+                continue
+        paths.append(str(dest))
+    if not paths:
+        raise RuntimeError("Aucun fichier DVF n'a pu être téléchargé.")
+    print("✓ Fichiers DVF utilisés :", paths)
+    return paths
+
+def build_prices_for_window(dvf_paths, window_days):
+    start_date = today - timedelta(days=window_days)
+    import duckdb, pandas as pd
+    con = duckdb.connect()
+    con.execute("PRAGMA threads=4")
+    print(f"Lecture & agrégation DVF ({window_days} jours)…")
+
+    # DuckDB lit la liste de fichiers d’un coup
+    files = ",".join([f"'{p}'" for p in dvf_paths])
+    q = f"""
+    WITH src AS (
+      SELECT
+        try_cast(date_mutation AS DATE) AS dte,
+        nature_mutation,
+        type_local,
+        try_cast(surface_reelle_bati AS DOUBLE) AS surf,
+        try_cast(valeur_fonciere AS DOUBLE) AS vf,
+        code_commune
+      FROM read_csv_auto([{files}], header=TRUE, sep=',', sample_size=-1, union_by_name=TRUE)
+    ),
+    base AS (
+      SELECT
+        code_commune,
+        type_local,
+        vf / NULLIF(surf,0) AS prix_m2
+      FROM src
+      WHERE dte >= DATE '{start_date.isoformat()}'
+        AND nature_mutation = 'Vente'
+        AND type_local IN ('Maison','Appartement')
+        AND surf IS NOT NULL AND vf IS NOT NULL
+        AND surf BETWEEN 10 AND 1000
+        AND vf > 1000
+    ),
+    clean AS (
+      SELECT * FROM base
+      WHERE prix_m2 BETWEEN 300 AND 20000
+    ),
+    agg AS (
+      SELECT
+        code_commune,
+        type_local,
+        median(prix_m2) AS med_eur_m2,
+        count(*) AS n
+      FROM clean
+      GROUP BY 1,2
+    )
+    SELECT * FROM agg
+    """
+    df = con.execute(q).fetch_df()
+
+    # pivot et map communes
+    pivot = df.pivot_table(index="code_commune", columns="type_local", values=["med_eur_m2","n"], aggfunc="first")
+    pivot.columns = [f"{a}_{b}".lower() for a,b in pivot.columns]
+    pivot = pivot.reset_index().rename(columns={"code_commune":"code"})
+    pivot = pivot.where(pd.notnull(pivot), None)
+
+    return pivot, start_date
+
+def write_prices_json(filename, pivot, start_date, communes_json):
+    import pandas as pd, json, pathlib
+    OUT_PATH = pathlib.Path(__file__).parent.resolve() / filename
+    communes_map = {c["code"]: c for c in communes_json}
+    by_code = {}
+    for _, row in pivot.iterrows():
+        code = str(row["code"])
+        c = communes_map.get(code)
+        if not c: 
+            continue
+        by_code[code] = {
+            "ville": c["nom"],
+            "dept": c.get("codeDepartement"),
+            "appart": safe_float(row.get("med_eur_m2_appartement")),
+            "maison": safe_float(row.get("med_eur_m2_maison")),
+            "n_ventes": {
+                "appart": safe_int(row.get("n_appartement")),
+                "maison": safe_int(row.get("n_maison"))
+            }
+        }
+    out = {
+        "periode": f"{start_date.isoformat()} à {today.isoformat()} ({(today-start_date).days//30} mois)",
+        "devise": "EUR/m²",
+        "source": "DVF (geo-dvf) — ventes logements, médiane €/m², filtres anti-outliers",
+        "data": by_code
+    }
+    with open(OUT_PATH, "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False, allow_nan=False)
+    print(f"✓ Écrit {OUT_PATH} ({len(by_code)} communes)")
+
+def main():
+    communes = ensure_communes()
+    dvf_paths = path_or_download_dvf_multi()
+    # 12 mois
+    pivot12, start12 = build_prices_for_window(dvf_paths, 365)
+    write_prices_json("prices_12.json", pivot12, start12, communes)
+    # 24 mois
+    pivot24, start24 = build_prices_for_window(dvf_paths, 730)
+    write_prices_json("prices_24.json", pivot24, start24, communes)
+
+if __name__ == "__main__":
+    main()
+
 import pandas as pd
 import duckdb
 import requests
