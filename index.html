@@ -264,14 +264,20 @@ const pop = (POP_DATA && POP_DATA[insee]) ?? null;
   return rows;
 }
 
-  function renderRankingTable(rows, title) {
-  if (!rows.length) return `<div class="error">Aucune donnée pour ces critères.</div>`;
+function renderRankingTable(rows, title) {
+  const nb = rows.length;                // <— nombre de lignes après filtre
+  if (!nb) return `<div class="error">Aucune donnée pour ces critères.</div>`;
+
   const head = `
-    <div class="muted" style="margin-bottom:6px">${title}</div>
+    <div class="muted" style="margin-bottom:6px">
+      ${title} — <b>${number(nb)}</b> commune${nb>1?'s':''}
+    </div>
     <table style="width:100%; border-collapse:collapse">
       <thead>
         <tr>
-          <th style="text-align:left; padding:8px; border-bottom:1px solid #283060">Ville</th>
+          <th style="text-align:left; padding:8px; border-bottom:1px solid #283060">
+            Ville <span class="muted" style="font-weight:400">(${number(nb)})</span>
+          </th>
           <th style="text-align:right; padding:8px; border-bottom:1px solid #283060">Population</th>
           <th style="text-align:right; padding:8px; border-bottom:1px solid #283060">Prix €/m²</th>
           <th style="text-align:right; padding:8px; border-bottom:1px solid #283060">n ventes</th>
@@ -279,6 +285,7 @@ const pop = (POP_DATA && POP_DATA[insee]) ?? null;
       </thead>
       <tbody>
   `;
+
   const body = rows.map(r => `
     <tr>
       <td style="padding:8px; border-bottom:1px solid #1b2250">${r.ville} (${r.insee})</td>
@@ -287,6 +294,7 @@ const pop = (POP_DATA && POP_DATA[insee]) ?? null;
       <td style="padding:8px; text-align:right; border-bottom:1px solid #1b2250">${number(r.n ?? 0)}</td>
     </tr>
   `).join('');
+
   const foot = `</tbody></table>`;
   return head + body + foot;
 }
