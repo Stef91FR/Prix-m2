@@ -250,7 +250,9 @@
     const val = row[kind];
     if (val == null) continue;
 
-    const pop = (window.POP_DATA && window.POP_DATA[insee]) ?? null;
+   
+const pop = (POP_DATA && POP_DATA[insee]) ?? null;
+
     if (pop == null) continue;
     if (pop < popMin || pop > popMax) continue;
 
