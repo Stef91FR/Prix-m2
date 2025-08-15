@@ -1,4 +1,4 @@
-name: Build prices.json
+name: .github/workflows/build.yml
 
 on:
   workflow_dispatch:
