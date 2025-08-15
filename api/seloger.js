@@ -1,8 +1,9 @@
-// /api/seloger.js – Vercel Serverless Function (CommonJS)
+// /api/seloger.js – Vercel Serverless (CommonJS)
 const cheerio = require('cheerio');
 const removeAccents = require('remove-accents');
 
-// utilitaire
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36';
+
 const slug = (s) =>
   removeAccents(String(s).toLowerCase())
     .replace(/['’]/g, '-')
@@ -24,118 +25,110 @@ const toNum = (s) => {
   return Number.isFinite(v) ? Math.round(v) : null;
 };
 
-async function fetchText(url) {
-  const r = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0' } });
-  if (!r.ok) throw new Error(String(r.status));
-  return await r.text();
+async function getJSON(url) {
+  const r = await fetch(url, { headers: { 'user-agent': UA, 'accept': 'application/json,text/plain,*/*' } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+async function getText(url) {
+  const r = await fetch(url, {
+    headers: {
+      'user-agent': UA,
+      'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'accept-language': 'fr-FR,fr;q=0.9,en;q=0.8',
+      'cache-control': 'no-cache'
+    }
+  });
+  return { ok: r.ok, status: r.status, ct: r.headers.get('content-type') || '', text: r.ok ? await r.text() : '' };
 }
 
 module.exports = async (req, res) => {
   try {
-    const { name, insee } = req.query;
+    const { name, insee, debug } = req.query;
     if (!name || !insee) {
       res.status(400).json({ error: 'missing params: name,insee' });
       return;
     }
 
-    // 1) On récupère région / département / codes postaux via geo.api.gouv.fr
-    let regionNom = null, deptNom = null, cp = null;
-
+    // 1) Région / département / codes postaux via geo.api.gouv.fr
+    let regionNom = null, deptNom = null, deptCode = null, cp = null;
     try {
-      const j = await (await fetch(
-        `https://geo.api.gouv.fr/communes/${encodeURIComponent(insee)}?fields=nom,codesPostaux,departement&format=json`
-      )).json();
-
-      cp = Array.isArray(j?.codesPostaux) && j.codesPostaux.length ? j.codesPostaux[0] : null; // on prend le 1er CP
-      deptNom = j?.departement?.nom || null;
-
-      // récupérer la région (via départements)
-      if (j?.departement?.code) {
-        const dep = await (await fetch(`https://geo.api.gouv.fr/departements/${j.departement.code}?fields=nom,codeRegion`)).json();
+      const commune = await getJSON(`https://geo.api.gouv.fr/communes/${encodeURIComponent(insee)}?fields=nom,codesPostaux,departement&format=json`);
+      cp = Array.isArray(commune?.codesPostaux) && commune.codesPostaux.length ? commune.codesPostaux[0] : null;
+      deptNom = commune?.departement?.nom || null;
+      deptCode = commune?.departement?.code || null;
+      if (deptCode) {
+        const dep = await getJSON(`https://geo.api.gouv.fr/departements/${deptCode}?fields=nom,codeRegion`);
         if (dep?.codeRegion) {
-          const reg = await (await fetch(`https://geo.api.gouv.fr/regions/${dep.codeRegion}?fields=nom`)).json();
+          const reg = await getJSON(`https://geo.api.gouv.fr/regions/${dep.codeRegion}?fields=nom`);
           regionNom = reg?.nom || null;
         }
       }
     } catch (_) {}
 
-    const citySlug = slug(name);
-    const deptSlug = deptNom ? slug(deptNom) : null;
+    const citySlug   = slug(name);
+    const deptSlug   = deptNom ? slug(deptNom) : null;
     const regionSlug = regionNom ? slug(regionNom) : null;
-    const cpSlug = cp ? String(cp) : '';
+    const cpSlug     = cp ? String(cp) : '';
 
-    // 2) Génère un ensemble d’URLs candidates (du plus “riche” au plus simple)
+    // 2) Génération d’URLs candidates (du plus “précis” au plus simple)
     const candidates = [];
-    if (regionSlug && deptSlug && cpSlug) {
+    if (regionSlug && deptSlug && cpSlug)
       candidates.push(`https://www.seloger.com/prix-de-l-immo/vente/${regionSlug}/${deptSlug}/${citySlug}-${cpSlug}/`);
-    }
-    if (regionSlug && deptSlug) {
+    if (regionSlug && deptSlug)
       candidates.push(`https://www.seloger.com/prix-de-l-immo/vente/${regionSlug}/${deptSlug}/${citySlug}/`);
-    }
-    if (deptSlug && cpSlug) {
+    if (deptSlug && cpSlug)
       candidates.push(`https://www.seloger.com/prix-de-l-immo/vente/${deptSlug}/${citySlug}-${cpSlug}/`);
-    }
-    // formats plus simples
+    if (cpSlug)
+      candidates.push(`https://www.seloger.com/prix-de-l-immo/vente/${citySlug}-${cpSlug}/`);
     candidates.push(`https://www.seloger.com/prix-de-l-immo/vente/${citySlug}.htm`);
-    if (cpSlug) candidates.push(`https://www.seloger.com/prix-de-l-immo/vente/${citySlug}-${cpSlug}/`);
 
-    // 3) Essaie les candidates
-    let html = null;
-    let finalUrl = null;
+    // 3) Essais + fallback moteur de recherche
+    const tried = [];
+    let html = null, finalUrl = null;
+
     for (const url of candidates) {
-      try {
-        const r = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0' } });
-        const ct = r.headers.get('content-type') || '';
-        if (r.ok && ct.includes('text/html')) {
-          const t = await r.text();
-          if (t && t.length > 1500) { html = t; finalUrl = url; break; }
-        }
-      } catch (_) {}
-    }
-
-    // 4) Fallback : moteur de recherche (DuckDuckGo) – on extrait un lien seloger prix/vente
-    if (!html) {
-      try {
-        const q = `site:seloger.com "prix de l'immo" vente ${name}`;
-        const ddg = `https://duckduckgo.com/html/?q=${encodeURIComponent(q)}`;
-        const h = await fetchText(ddg);
-
-        // Regex large pour capter une URL seloger prix-de-l-immo/vente
-        const m = h.match(/https?:\/\/www\.seloger\.com\/prix-de-l-immo\/vente\/[^\s"']+/i);
-        if (m && m[0]) {
-          const rr = await fetch(m[0], { headers: { 'user-agent': 'Mozilla/5.0' } });
-          if (rr.ok && (rr.headers.get('content-type') || '').includes('text/html')) {
-            html = await rr.text();
-            finalUrl = m[0];
-          }
-        }
-      } catch (_) {}
+      const { ok, status, ct, text } = await getText(url);
+      tried.push({ url, status, ct, len: text.length });
+      if (ok && ct.includes('text/html') && text.length > 1500) { html = text; finalUrl = url; break; }
     }
 
     if (!html) {
+      // DuckDuckGo (premier lien seloger prix-vente)
+      const q = `site:seloger.com "prix de l'immo" vente ${name}`;
+      const { text: ddgHtml } = await getText(`https://duckduckgo.com/html/?q=${encodeURIComponent(q)}`);
+      const m = ddgHtml.match(/https?:\/\/www\.seloger\.com\/prix-de-l-immo\/vente\/[^\s"']+/i);
+      if (m && m[0]) {
+        const { ok, status, ct, text } = await getText(m[0]);
+        tried.push({ url: m[0], status, ct, len: text.length, from: 'ddg' });
+        if (ok && ct.includes('text/html') && text.length > 1500) { html = text; finalUrl = m[0]; }
+      }
+    }
+
+    if (!html) {
+      if (debug) { res.status(200).json({ note: 'not-found', tried }); return; }
       res.status(200).json({ appart: null, maison: null, source_url: null, note: 'not-found' });
       return;
     }
 
-    // 5) Parsing robuste
+    // 4) Parsing robuste
     const $ = cheerio.load(html);
     const body = $('body').text().replace(/\s+/g, ' ');
 
-    let appart = null, maison = null;
-
     const appPatterns = [
       /(appartement|appartements)[^0-9]{0,40}([0-9\u202F\u00A0\s.,]{3,})\s*€\s*\/\s*(?:m²|m2)/i,
-      /(prix|moyen|m²)[^\.]{0,100}(appartement|appartements)[^0-9]{0,30}([0-9\u202F\u00A0\s.,]{3,})/i,
+      /(prix|moyen|m²)[^\.]{0,120}(appartement|appartements)[^0-9]{0,40}([0-9\u202F\u00A0\s.,]{3,})/i,
     ];
     const maiPatterns = [
       /(maison|maisons)[^0-9]{0,40}([0-9\u202F\u00A0\s.,]{3,})\s*€\s*\/\s*(?:m²|m2)/i,
-      /(prix|moyen|m²)[^\.]{0,100}(maison|maisons)[^0-9]{0,30}([0-9\u202F\u00A0\s.,]{3,})/i,
+      /(prix|moyen|m²)[^\.]{0,120}(maison|maisons)[^0-9]{0,40}([0-9\u202F\u00A0\s.,]{3,})/i,
     ];
 
+    let appart = null, maison = null;
     for (const re of appPatterns) { const m = body.match(re); if (m) { appart = toNum(m[2] || m[3]); if (appart) break; } }
     for (const re of maiPatterns) { const m = body.match(re); if (m) { maison = toNum(m[2] || m[3]); if (maison) break; } }
 
-    // petit fallback DOM local
     if (!appart || !maison) {
       $('*').each((_, el) => {
         const t = $(el).text().replace(/\s+/g, ' ');
@@ -149,6 +142,11 @@ module.exports = async (req, res) => {
         }
         if (appart && maison) return false;
       });
+    }
+
+    if (debug) {
+      res.status(200).json({ note: (appart || maison) ? 'ok' : 'parsed-but-empty', source_url: finalUrl, appart, maison, tried });
+      return;
     }
 
     res.status(200).json({
