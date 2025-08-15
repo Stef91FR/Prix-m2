@@ -61,31 +61,25 @@
     <div class="card" style="margin-top:16px">
   <h3 style="margin:0 0 8px">Classement par département</h3>
 
-  <div class="row" style="grid-template-columns: repeat(8, 1fr); gap:8px">
-    <input id="dept-code" type="text" placeholder="Code dép. (ex. 74, 13, 2A, 2B)" />
-    <select id="period">
-      <option value="12">12 mois</option>
-      <option value="24">24 mois</option>
-    </select>
-    <select id="kind">
-      <option value="appart">Appartements</option>
-      <option value="maison">Maisons</option>
-    </select>
-    <select id="order">
-      <option value="desc">Décroissant</option>
-      <option value="asc">Croissant</option>
-    </select>
-      <input id="pop-min" type="number" placeholder="Pop min" value="1500" />
-  <input id="pop-max" type="number" placeholder="Pop max" value="3500" />
+<div class="row" style="grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr 1fr auto; gap:8px">
+  <input id="dept-code" type="text" placeholder="Code dép. (ex. 74, 13, 2A, 2B)" />
+  <select id="period">
+    <option value="12">12 mois</option>
+    <option value="24">24 mois</option>
+  </select>
+  <select id="kind">
+    <option value="appart">Appartements</option>
+    <option value="maison">Maisons</option>
+  </select>
+  <select id="order">
+    <option value="desc">Décroissant</option>
+    <option value="asc">Croissant</option>
+  </select>
+  <input id="pop-min" type="number" placeholder="Hab. mini" value="1500" />
+  <input id="pop-max" type="number" placeholder="Hab. maxi" value="3500" />
   <button id="btn-ranking">Voir</button>
-    <select id="sortby" title="Critère de tri">
-      <option value="price">Trier par prix</option>
-      <option value="pop">Trier par population</option>
-    </select>
-    <input id="pop-min" type="number" placeholder="Hab. mini" />
-    <input id="pop-max" type="number" placeholder="Hab. maxi" />
-    <button id="btn-ranking">Voir</button>
-  </div>
+</div>
+
 
   <div id="ranking-msg" class="muted" style="margin-top:8px"></div>
   <div id="ranking-out" style="margin-top:8px"></div>
