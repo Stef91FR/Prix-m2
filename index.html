@@ -242,24 +242,25 @@
     }
   }
 
-  function makeRanking(dataObj, deptCode, kind, order, popMin, popMax, sortBy) {
-    const rows = [];
-    for (const [insee, row] of Object.entries(dataObj.data)) {
-      if (!row || row.dept !== deptCode) continue;
-      const val = row[kind];
-      if (val == null) continue;
-      const pop = POP_DATA?.[insee] ?? null;
-      if (pop == null) continue;
-      if (pop < popMin || pop > popMax) continue;
-      const n = row.n_ventes?.[kind] ?? null;
-      rows.push({ insee, ville: row.ville, value: val, n, pop });
-    }
-    rows.sort((a,b) => {
-      if (sortBy === 'pop') return (order === 'asc' ? a.pop - b.pop : b.pop - a.pop);
-      return (order === 'asc' ? a.value - b.value : b.value - a.value); // tri par prix par défaut
-    });
-    return rows;
+ function makeRanking(dataObj, deptCode, kind, order, popMin, popMax) {
+  const rows = [];
+  for (const [insee, row] of Object.entries(dataObj.data)) {
+    if (!row || row.dept !== deptCode) continue;
+
+    const val = row[kind];
+    if (val == null) continue;
+
+    const pop = (window.POP_DATA && window.POP_DATA[insee]) ?? null;
+    if (pop == null) continue;
+    if (pop < popMin || pop > popMax) continue;
+
+    const n = row.n_ventes?.[kind] ?? null;
+    rows.push({ insee, ville: row.ville, value: val, n, pop });
   }
+
+  rows.sort((a,b) => (order === 'asc' ? a.value - b.value : b.value - a.value));
+  return rows;
+}
 
   function renderRankingTable(rows, title) {
     if (!rows.length) return `<div class="error">Aucune donnée pour ces critères.</div>`;
@@ -292,29 +293,41 @@
   const rankingOut = document.getElementById('ranking-out');
   const rankingMsg = document.getElementById('ranking-msg');
 
-  btnRanking.addEventListener('click', async () => {
-    const dept = document.getElementById('dept-code').value.trim().toUpperCase();
-    const period = document.getElementById('period').value;  // "12" | "24"
-    const kind = document.getElementById('kind').value;      // "appart" | "maison"
-    const order = document.getElementById('order').value;    // "asc" | "desc"
-    const sortBy = document.getElementById('sortby').value;  // "price" | "pop"
-    const popMin = parseInt(document.getElementById('pop-min').value) || 0;
-    const popMax = parseInt(document.getElementById('pop-max').value) || Number.POSITIVE_INFINITY;
+ btnRanking.addEventListener('click', async () => {
+  const dept  = document.getElementById('dept-code').value.trim().toUpperCase();
+  const period = document.getElementById('period').value;
+  const kind   = document.getElementById('kind').value;
+  const order  = document.getElementById('order').value;
 
-    rankingMsg.textContent = '';
-    rankingOut.innerHTML = '';
+  const rawMin = parseInt(document.getElementById('pop-min').value, 10);
+  const rawMax = parseInt(document.getElementById('pop-max').value, 10);
+  let popMin = Number.isFinite(rawMin) ? rawMin : 1500;
+  let popMax = Number.isFinite(rawMax) ? rawMax : 3500;
 
-    if (!dept) { rankingMsg.textContent = 'Saisissez un code département (ex : 74, 13, 2A, 2B).'; return; }
+  rankingMsg.textContent = '';
+  rankingOut.innerHTML = '';
 
-    try {
-      await ensureAllLoaded();
-      const dataObj = (period === '12') ? PRICES12 : PRICES24;
-      const rows = makeRanking(dataObj, dept, kind, order, popMin, popMax, sortBy);
-      const title = `Département ${dept} • ${period} mois • ${kind === 'appart' ? 'Appartements' : 'Maisons'} • Tri ${sortBy === 'pop' ? 'population' : 'prix'} • Ordre ${order === 'asc' ? 'croissant' : 'décroissant'} • Population ${number(popMin)}–${isFinite(popMax) ? number(popMax) : '∞'}`;
-      rankingOut.innerHTML = renderRankingTable(rows, title);
-    } catch (e) {
-      rankingOut.innerHTML = `<div class="error">Erreur lors du chargement des données.</div>`;
-    }
+  if (!dept) {
+    rankingMsg.textContent = 'Saisissez un code département (ex : 74, 13, 2A, 2B).';
+    return;
+  }
+
+  if (popMax < popMin) {
+    [popMin, popMax] = [popMax, popMin];
+  }
+
+  try {
+    await ensureAllLoaded(); // Charge PRICES12, PRICES24, et POP_DATA
+    const dataObj = (period === '12') ? PRICES12 : PRICES24;
+    const rows = makeRanking(dataObj, dept, kind, order, popMin, popMax);
+
+    const title = `Département ${dept} • ${period} mois • ${kind === 'appart' ? 'Appartements' : 'Maisons'} • Population ${number(popMin)}–${number(popMax)} • Ordre ${order === 'asc' ? 'croissant' : 'décroissant'}`;
+    rankingOut.innerHTML = renderRankingTable(rows, title);
+  } catch (e) {
+    rankingOut.innerHTML = `<div class="error">Erreur lors du chargement des données.</div>`;
+  }
+});
+
   });
 </script>
 
