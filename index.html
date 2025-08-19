@@ -114,6 +114,100 @@
   }
 
 
+// ---- EPCI helpers -------------------------------------------------
+
+async function fetchEPCIForCommune(insee) {
+  // Renvoie { code: '2000xxxxx', nom: 'Communauté XXX' } ou null
+  try {
+    const r = await fetch(
+      `https://geo.api.gouv.fr/communes/${encodeURIComponent(insee)}/intercommunalite?format=json`
+    );
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (_) {
+    return null;
+  }
+}
+
+async function fetchCommunesOfEPCI(epciCode) {
+  // Renvoie [{code, nom, population?}, ...] ou []
+  try {
+    const r = await fetch(
+      `https://geo.api.gouv.fr/epcis/${encodeURIComponent(epciCode)}/communes?format=json&fields=code,nom,population`
+    );
+    if (!r.ok) return [];
+    return await r.json();
+  } catch (_) {
+    return [];
+  }
+}
+
+// Optionnel: index rapide des populations locales (si tu as communes_min.json ou population.json chargés)
+function getLocalPopulationByInseeGetter() {
+  // Essaie d'abord population.json (POP_DATA), sinon communes_min.json (COMMUNES_MIN), sinon null.
+  const byInsee = {};
+
+  if (window.POP_DATA && typeof window.POP_DATA === 'object') {
+    for (const [code, pop] of Object.entries(window.POP_DATA)) {
+      if (Number.isFinite(pop)) byInsee[code] = pop;
+    }
+  }
+  if (Array.isArray(window.COMMUNES_MIN)) {
+    for (const c of window.COMMUNES_MIN) {
+      if (c && c.code && Number.isFinite(c.population) && byInsee[c.code] == null) {
+        byInsee[c.code] = c.population;
+      }
+    }
+  }
+  return (insee) => byInsee[insee] ?? null;
+}
+
+async function computeEPCIInfo(insee) {
+  const epci = await fetchEPCIForCommune(insee);
+  if (!epci || !epci.code) return null;
+
+  const communes = await fetchCommunesOfEPCI(epci.code);
+  const getLocalPop = getLocalPopulationByInseeGetter();
+
+  let totalPop = 0;
+  let missing = 0;
+
+  for (const c of communes) {
+    // priorité: ta donnée locale ; sinon champ population de l’API ; sinon inconnu
+    let p = getLocalPop(c.code);
+    if (p == null && Number.isFinite(c.population)) p = c.population;
+
+    if (Number.isFinite(p)) totalPop += p;
+    else missing++;
+  }
+
+  return {
+    code: epci.code,
+    nom: epci.nom,
+    nb: communes.length,
+    population: totalPop,
+    missing
+  };
+}
+
+function renderEPCI(epciInfo) {
+  if (!epciInfo) {
+    return `<div class="error">EPCI introuvable pour cette commune.</div>`;
+  }
+  const missTxt = epciInfo.missing
+    ? ` <span class="muted">(± ${number(epciInfo.missing)} communes sans population)</span>`
+    : '';
+  return `
+    <div class="muted"><b>EPCI :</b> ${epciInfo.nom} (${epciInfo.code}) —
+      ${number(epciInfo.nb)} communes — population ${number(epciInfo.population)}${missTxt}
+    </div>
+  `;
+}
+
+
+
+   
+
 // ----- Charger le fichier communes_min.json une seule fois -----
 let COMMUNES_MIN = null;
 async function ensureCommunesMin() {
@@ -217,6 +311,10 @@ function renderBasinBlock(codeInsee) {
     searchAdresse(e.target.value);
   });
 
+
+<div id="epci-out" class="result" style="margin-top:8px"></div>
+
+   
   // ---------- Bouton principal (12/24 mois) ----------
   btn.addEventListener('click', async () => {
     msg.innerHTML = '';
@@ -280,6 +378,30 @@ try {
   basinMsg.textContent = '';
   basinOut.innerHTML = `<div class="error">Impossible de calculer le bassin.</div>`;
 }
+
+
+// … après avoir rendu les blocs 12/24 mois …
+out.classList.add('show');
+
+// (tu appelles déjà ensureAllLoaded/ensureCommunesMin selon tes besoins ailleurs)
+
+const epciOut = document.getElementById('epci-out');
+if (epciOut) {
+  epciOut.classList.remove('show');
+  epciOut.innerHTML = '';
+  try {
+    const info = await computeEPCIInfo(window.chosen.code_insee);
+    epciOut.innerHTML = renderEPCI(info);
+    epciOut.classList.add('show');
+  } catch (e) {
+    epciOut.innerHTML = `<div class="error">Impossible de récupérer l'EPCI.</div>`;
+    epciOut.classList.add('show');
+  }
+}
+
+
+
+
     
   });
 
