@@ -1,0 +1,33 @@
+name: Build communes_min.json
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 3 * * 1"  # chaque lundi 03:15 UTC
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # nécessaire pour committer le fichier généré
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install requests
+
+      - name: Build communes_min.json
+        run: python communes_min_build.py
+
+      - name: Commit & push communes_min.json
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update communes_min.json"
+          file_pattern: "communes_min.json"
