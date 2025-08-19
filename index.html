@@ -42,6 +42,13 @@
   </header>
 
   <main>
+
+<div class="card" style="margin-top:16px">
+  <h3 style="margin:0 0 8px">Bassin de vie</h3>
+  <div id="basin-msg" class="muted" style="margin-top:4px"></div>
+  <div id="basin-out" style="margin-top:8px"></div>
+</div>
+    
     <div class="card">
       <label for="ville">Ville</label>
       <div class="row" style="margin-top:8px">
@@ -106,6 +113,65 @@
     if (!r.ok) return null; const j = await r.json(); return j.population ?? null;
   }
 
+
+// ----- Charger le fichier communes_min.json une seule fois -----
+let COMMUNES_MIN = null;
+async function ensureCommunesMin() {
+  if (!COMMUNES_MIN) {
+    COMMUNES_MIN = await loadJSON('communes_min.json');
+  }
+}
+
+// Distance Haversine (km)
+function distKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI/180;
+  const dLon = (lon2 - lon1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+            Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// Retourne {5: pop, 10: pop, 15: pop, 20: pop} pour la commune choisie
+function basinPopulations(codeInsee) {
+  if (!COMMUNES_MIN) return null;
+  const me = COMMUNES_MIN.find(c => c.code === codeInsee);
+  if (!me || me.lat == null || me.lon == null) return null;
+
+  const rays = [5,10,15,20];
+  const res = {5:0, 10:0, 15:0, 20:0};
+
+  for (const c of COMMUNES_MIN) {
+    if (!Number.isFinite(c.population)) continue;
+    const d = distKm(me.lat, me.lon, c.lat, c.lon);
+    for (const r of rays) {
+      if (d <= r) res[r] += c.population;
+    }
+  }
+  return res;
+}
+
+// Rendu simple (commune + 4 lignes)
+function renderBasinBlock(codeInsee) {
+  if (!COMMUNES_MIN) return `<div class="error">Bassin indisponible.</div>`;
+  const me = COMMUNES_MIN.find(c => c.code === codeInsee);
+  if (!me) return `<div class="error">Commune inconnue.</div>`;
+
+  const communePop = Number.isFinite(me.population) ? me.population : null;
+  const res = basinPopulations(codeInsee);
+  if (!res) return `<div class="error">Impossible de calculer le bassin.</div>`;
+
+  return `
+    <div class="muted" style="margin:6px 0">Population de la commune : <b>${communePop==null?'N/A':number(communePop)}</b> habitants</div>
+    <div class="muted" style="margin:6px 0">Bassin de vie à 5 km : <b>${number(res[5])}</b> habitants</div>
+    <div class="muted" style="margin:6px 0">Bassin de vie à 10 km : <b>${number(res[10])}</b> habitants</div>
+    <div class="muted" style="margin:6px 0">Bassin de vie à 15 km : <b>${number(res[15])}</b> habitants</div>
+    <div class="muted" style="margin:6px 0">Bassin de vie à 20 km : <b>${number(res[20])}</b> habitants</div>
+  `;
+}
+
+   
   // ---------- DOM ----------
   const $ = (s) => document.querySelector(s);
   const villeInput = $('#ville');
@@ -200,6 +266,21 @@
     } finally {
       btn.disabled = false; btn.textContent = 'Rechercher';
     }
+
+// --- Bassin de vie (4 rayons) ---
+const basinMsg = document.getElementById('basin-msg');
+const basinOut = document.getElementById('basin-out');
+basinMsg.textContent = 'Calcul du bassin en cours…';
+basinOut.innerHTML = '';
+try {
+  await ensureCommunesMin();                            // charge communes_min.json
+  basinOut.innerHTML = renderBasinBlock(window.chosen.code_insee);
+  basinMsg.textContent = '';
+} catch (e) {
+  basinMsg.textContent = '';
+  basinOut.innerHTML = `<div class="error">Impossible de calculer le bassin.</div>`;
+}
+    
   });
 
   // ---------- Bouton SeLoger ----------
