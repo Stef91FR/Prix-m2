@@ -117,18 +117,41 @@
 
 // ---- EPCI helpers -------------------------------------------------
 
+// petit cache pour éviter de recharger 10 fois le même EPCI
+const EPCI_CACHE = new Map();
+
 async function fetchEPCIForCommune(insee) {
-  // Renvoie { code: '2000xxxxx', nom: 'Communauté XXX' } ou null
   try {
+    // 1) Récupérer le codeEpci de la commune
     const r = await fetch(
-      `https://geo.api.gouv.fr/communes/${encodeURIComponent(insee)}/intercommunalite?format=json`
+      `https://geo.api.gouv.fr/communes/${encodeURIComponent(insee)}?fields=nom,code,codeEpci&format=json`
     );
     if (!r.ok) return null;
-    return await r.json();
+    const j = await r.json();
+    if (!j.codeEpci) return null; // rares cas (régimes spéciaux)
+
+    const epciCode = j.codeEpci;
+
+    // 2) Récupérer le nom/code de l'EPCI
+    if (EPCI_CACHE.has(epciCode)) return EPCI_CACHE.get(epciCode);
+
+    const r2 = await fetch(
+      `https://geo.api.gouv.fr/epcis/${encodeURIComponent(epciCode)}?fields=code,nom&format=json`
+    );
+    if (!r2.ok) {
+      const fallback = { code: epciCode, nom: 'EPCI' };
+      EPCI_CACHE.set(epciCode, fallback);
+      return fallback;
+    }
+    const e = await r2.json();
+    const out = { code: e.code || epciCode, nom: e.nom || 'EPCI' };
+    EPCI_CACHE.set(epciCode, out);
+    return out;
   } catch (_) {
     return null;
   }
 }
+
 
 async function fetchCommunesOfEPCI(epciCode) {
   // Renvoie [{code, nom, population?}, ...] ou []
