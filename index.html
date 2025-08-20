@@ -33,6 +33,15 @@
     table { width:100%; border-collapse:collapse }
     th, td { padding:8px; border-bottom:1px solid #1b2250 }
     th { border-bottom:1px solid #283060 }
+
+    // taille des caractères
+    .basin-val {
+  font-size: 20px;   /* 2 tailles plus gros que le texte actuel */
+  font-weight: 700;  /* plus visible */
+  color: #ffffff;    /* contraste */
+}
+
+    
   </style>
 </head>
 <body>
@@ -47,6 +56,9 @@
   <h3 style="margin:0 0 8px">Bassin de vie</h3>
   <div id="basin-msg" class="muted" style="margin-top:4px"></div>
   <div id="basin-out" style="margin-top:8px"></div>
+
+    <!-- Nouveau : l’EPCI est intégré ici -->
+  <div id="epci-out" style="margin-top:12px"></div>
 </div>
     
     <div class="card">
@@ -92,7 +104,6 @@
   <div id="ranking-out" style="margin-top:8px"></div>
 </div>
 
-    <div id="epci-out" class="result" style="margin-top:8px"></div>
 
     <footer>
       <p>Sources : <a href="https://api-adresse.data.gouv.fr" target="_blank" rel="noreferrer">API Adresse</a> &nbsp;•&nbsp; DVF (Etalab/DGFIP)</p>
