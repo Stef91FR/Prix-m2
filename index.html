@@ -291,13 +291,24 @@ function renderBasinBlock(codeInsee) {
   const res = basinPopulations(codeInsee);
   if (!res) return `<div class="error">Impossible de calculer le bassin.</div>`;
 
-  return `
-    <div class="muted" style="margin:6px 0">Population de la commune : <b>${communePop==null?'N/A':number(communePop)}</b> habitants</div>
-    <div class="muted" style="margin:6px 0">Bassin de vie à 5 km : <b>${number(res[5])}</b> habitants</div>
-    <div class="muted" style="margin:6px 0">Bassin de vie à 10 km : <b>${number(res[10])}</b> habitants</div>
-    <div class="muted" style="margin:6px 0">Bassin de vie à 15 km : <b>${number(res[15])}</b> habitants</div>
-    <div class="muted" style="margin:6px 0">Bassin de vie à 20 km : <b>${number(res[20])}</b> habitants</div>
-  `;
+return `
+  <div class="muted" style="margin:10px 0">
+    Population de la commune : <span class="basin-val">${communePop==null?'N/A':number(communePop)}</span> habitants
+  </div>
+  <div class="muted" style="margin:10px 0">
+    Bassin de vie à 5 km : <span class="basin-val">${number(res[5])}</span> habitants
+  </div>
+  <div class="muted" style="margin:10px 0">
+    Bassin de vie à 10 km : <span class="basin-val">${number(res[10])}</span> habitants
+  </div>
+  <div class="muted" style="margin:10px 0">
+    Bassin de vie à 15 km : <span class="basin-val">${number(res[15])}</span> habitants
+  </div>
+  <div class="muted" style="margin:10px 0">
+    Bassin de vie à 20 km : <span class="basin-val">${number(res[20])}</span> habitants
+  </div>
+`;
+
 }
 
    
