@@ -288,16 +288,24 @@ async function loadFacilityDataset(url) {
 
   let facilityCodesLine = [];
   let facilityLabelsLine = [];
+  const facilityCodePattern = /^(?=.*\d)[A-Z0-9]{2,6}$/i;
   for (let i = 0; i < headerIndex; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     if (!facilityCodesLine.length && line.startsWith(';FACILITY_TYPE;')) {
-      const parts = line.split(';').map(part => part.trim().replace(/^"|"$/g, ''));
-      facilityCodesLine = parts;
+      const parts = lines[i]
+        .split(';')
+        .map(part => part.trim().replace(/^"|"$/g, ''));
+      const hasCodes = parts.some(part => facilityCodePattern.test(part));
+      if (hasCodes) {
+        facilityCodesLine = parts;
+      }
       continue;
     }
     if (facilityCodesLine.length && !facilityLabelsLine.length && line.includes(';') && !line.startsWith(';FACILITY_TYPE;')) {
-      facilityLabelsLine = line.split(';').map(part => part.trim().replace(/^"|"$/g, ''));
+      facilityLabelsLine = lines[i]
+        .split(';')
+        .map(part => part.trim().replace(/^"|"$/g, ''));
       break;
     }
   }
