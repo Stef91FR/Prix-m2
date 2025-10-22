@@ -63,6 +63,7 @@
   <div class="tabs" role="tablist">
     <button class="tab-btn active" type="button" data-target="tab-basin" role="tab" aria-selected="true" aria-controls="tab-basin">Bassin de vie</button>
     <button class="tab-btn" type="button" data-target="tab-commerce" role="tab" aria-selected="false" aria-controls="tab-commerce">Commerces</button>
+    <button class="tab-btn" type="button" data-target="tab-medical" role="tab" aria-selected="false" aria-controls="tab-medical">Médico-social</button>
   </div>
   <div class="tab-panel active" id="tab-basin" role="tabpanel" aria-hidden="false">
     <div id="basin-msg" class="muted" style="margin-top:4px">Sélectionnez une commune pour afficher le bassin de vie.</div>
@@ -72,6 +73,10 @@
   <div class="tab-panel" id="tab-commerce" role="tabpanel" aria-hidden="true">
     <div id="commerce-msg" class="muted" style="margin-top:4px">Sélectionnez une commune pour afficher les commerces.</div>
     <div id="commerce-out" style="margin-top:8px"></div>
+  </div>
+  <div class="tab-panel" id="tab-medical" role="tabpanel" aria-hidden="true">
+    <div id="medical-msg" class="muted" style="margin-top:4px">Sélectionnez une commune pour afficher les établissements médico-sociaux.</div>
+    <div id="medical-out" style="margin-top:8px"></div>
   </div>
 </div>
     
@@ -263,16 +268,15 @@ function renderEPCI(epciInfo) {
 // ----- Charger le fichier communes_min.json une seule fois -----
 let COMMUNES_MIN = null;
 let COMMERCE_DATA = null;
+let MEDICAL_DATA = null;
 async function ensureCommunesMin() {
   if (!COMMUNES_MIN) {
     COMMUNES_MIN = await loadJSON('communes_min.json');
   }
 }
 
-async function ensureCommerceData() {
-  if (COMMERCE_DATA) return COMMERCE_DATA;
-
-  const r = await fetch('BPE_COMMERCE_FR.csv?nocache=' + Date.now(), { cache: 'no-store' });
+async function loadFacilityDataset(url) {
+  const r = await fetch(`${url}?nocache=${Date.now()}`, { cache: 'no-store' });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const txt = (await r.text()).replace(/\ufeff/g, '');
   const lines = txt
@@ -338,15 +342,32 @@ async function ensureCommerceData() {
     map.set(insee, { name: communeName, values });
   }
 
-  COMMERCE_DATA = { facilities, map };
+  return { facilities, map };
+}
+
+async function ensureCommerceData() {
+  if (!COMMERCE_DATA) {
+    COMMERCE_DATA = await loadFacilityDataset('BPE_COMMERCE_FR.csv');
+  }
   return COMMERCE_DATA;
 }
 
-function renderCommerceTable(communeName, entries, inseeCode) {
+async function ensureMedicalData() {
+  if (!MEDICAL_DATA) {
+    MEDICAL_DATA = await loadFacilityDataset('BPE_SANTE_ACTION_SOCIALE_FR.csv');
+  }
+  return MEDICAL_DATA;
+}
+
+function renderFacilityTable(communeName, entries, inseeCode, options = {}) {
+  const datasetTitle = options.datasetTitle || 'Équipements recensés';
+  const entryColumnLabel = options.entryColumnLabel || 'Type';
+  const datasetLabel = options.emptyDatasetLabel || 'équipement';
+
   if (!entries || !entries.length) {
     const label = communeName ? escapeHtml(communeName) : 'cette commune';
     const code = inseeCode ? ` (${escapeHtml(inseeCode)})` : '';
-    return `<div class="muted">Aucun commerce recensé au-dessus de 0 pour ${label}${code}.</div>`;
+    return `<div class="muted">Aucun ${escapeHtml(datasetLabel)} recensé au-dessus de 0 pour ${label}${code}.</div>`;
   }
 
   const rows = entries
@@ -360,12 +381,15 @@ function renderCommerceTable(communeName, entries, inseeCode) {
     `)
     .join('');
 
+  const headingName = communeName ? escapeHtml(communeName) : 'Commune inconnue';
+  const code = inseeCode ? ` (${escapeHtml(inseeCode)})` : '';
+
   return `
-    <div class="muted" style="margin-bottom:8px">Commerces recensés — ${escapeHtml(communeName)}${inseeCode ? ` (${escapeHtml(inseeCode)})` : ''}</div>
+    <div class="muted" style="margin-bottom:8px">${escapeHtml(datasetTitle)} — ${headingName}${code}</div>
     <table>
       <thead>
         <tr>
-          <th style="text-align:left">Type de commerce</th>
+          <th style="text-align:left">${escapeHtml(entryColumnLabel)}</th>
           <th style="text-align:right">Nombre</th>
         </tr>
       </thead>
@@ -450,6 +474,9 @@ return `
   const commerceMsg = $('#commerce-msg');
   const commerceOut = $('#commerce-out');
   const defaultCommerceMessage = 'Sélectionnez une commune pour afficher les commerces.';
+  const medicalMsg = $('#medical-msg');
+  const medicalOut = $('#medical-out');
+  const defaultMedicalMessage = 'Sélectionnez une commune pour afficher les établissements médico-sociaux.';
 
   tabButtons.forEach((button) => {
     button.addEventListener('click', () => {
@@ -505,6 +532,10 @@ return `
       commerceMsg.textContent = defaultCommerceMessage;
       commerceOut.innerHTML = '';
     }
+    if (medicalMsg && medicalOut) {
+      medicalMsg.textContent = defaultMedicalMessage;
+      medicalOut.innerHTML = '';
+    }
     searchAdresse(e.target.value);
   });
 
@@ -521,6 +552,10 @@ return `
     if (commerceMsg && commerceOut) {
       commerceMsg.textContent = 'Chargement des commerces…';
       commerceOut.innerHTML = '';
+    }
+    if (medicalMsg && medicalOut) {
+      medicalMsg.textContent = 'Chargement des établissements médico-sociaux…';
+      medicalOut.innerHTML = '';
     }
     try {
       const [p12, p24] = await Promise.all([ loadJSON('prices_12.json'), loadJSON('prices_24.json') ]);
@@ -595,16 +630,37 @@ if (epciOut) {
   }
 }
 
+const normalizedSelectedCode = (window.chosen.code_insee || '').trim().toUpperCase();
+
 if (commerceMsg && commerceOut) {
   try {
     const commerceData = await ensureCommerceData();
-    const selectedCode = (window.chosen.code_insee || '').trim().toUpperCase();
-    const row = commerceData.map.get(selectedCode);
+    const row = commerceData.map.get(normalizedSelectedCode);
     commerceMsg.textContent = '';
-    commerceOut.innerHTML = renderCommerceTable(window.chosen.name, row ? row.values : [], selectedCode);
+    commerceOut.innerHTML = renderFacilityTable(window.chosen.name, row ? row.values : [], normalizedSelectedCode, {
+      datasetTitle: 'Commerces recensés',
+      entryColumnLabel: 'Type de commerce',
+      emptyDatasetLabel: 'commerce'
+    });
   } catch (e) {
     commerceMsg.textContent = '';
     commerceOut.innerHTML = `<div class="error">Impossible de charger les commerces.</div>`;
+  }
+}
+
+if (medicalMsg && medicalOut) {
+  try {
+    const medicalData = await ensureMedicalData();
+    const row = medicalData.map.get(normalizedSelectedCode);
+    medicalMsg.textContent = '';
+    medicalOut.innerHTML = renderFacilityTable(window.chosen.name, row ? row.values : [], normalizedSelectedCode, {
+      datasetTitle: 'Établissements médico-sociaux recensés',
+      entryColumnLabel: 'Type d\'équipement',
+      emptyDatasetLabel: 'établissement médico-social'
+    });
+  } catch (e) {
+    medicalMsg.textContent = '';
+    medicalOut.innerHTML = `<div class="error">Impossible de charger les établissements médico-sociaux.</div>`;
   }
 }
 
