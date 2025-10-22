@@ -288,24 +288,24 @@ async function loadFacilityDataset(url) {
 
   let facilityCodesLine = [];
   let facilityLabelsLine = [];
-  const hasFacilityCode = (str) => /^B\d{3}$/i.test(str.trim());
   for (let i = 0; i < headerIndex; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     if (!facilityCodesLine.length && line.startsWith(';FACILITY_TYPE;')) {
-      const parts = line.split(';');
-      if (parts.some(hasFacilityCode)) {
-        facilityCodesLine = parts;
-      }
+      const parts = line.split(';').map(part => part.trim().replace(/^"|"$/g, ''));
+      facilityCodesLine = parts;
       continue;
     }
     if (facilityCodesLine.length && !facilityLabelsLine.length && line.includes(';') && !line.startsWith(';FACILITY_TYPE;')) {
-      facilityLabelsLine = line.split(';');
+      facilityLabelsLine = line.split(';').map(part => part.trim().replace(/^"|"$/g, ''));
       break;
     }
   }
 
-  const headerParts = lines[headerIndex].trim().split(';');
+  const headerParts = lines[headerIndex]
+    .trim()
+    .split(';')
+    .map(part => part.trim().replace(/^"|"$/g, ''));
   const facilities = [];
   for (let i = 2; i < headerParts.length; i++) {
     const code = ((facilityCodesLine[i] ?? headerParts[i]) || '').trim();
@@ -325,7 +325,9 @@ async function loadFacilityDataset(url) {
     const trimmedLine = rawLine.trim();
     if (!trimmedLine || trimmedLine.startsWith(';')) continue;
 
-    const parts = rawLine.split(';').map(part => part.trim());
+    const parts = rawLine
+      .split(';')
+      .map(part => part.trim().replace(/^"|"$/g, ''));
     const insee = (parts[0] || '').toUpperCase();
     if (!codePattern.test(insee)) continue;
     const communeName = parts[1] || '';
