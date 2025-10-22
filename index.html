@@ -33,13 +33,20 @@
     table { width:100%; border-collapse:collapse }
     th, td { padding:8px; border-bottom:1px solid #1b2250 }
     th { border-bottom:1px solid #283060 }
+    .tabs { display:flex; gap:16px; border-bottom:1px solid #1b2250; margin:-4px 0 12px; flex-wrap:wrap; }
+    .tab-btn { background:none; border:none; color:#aabbff; padding:10px 4px; font-weight:600; border-bottom:2px solid transparent; border-radius:0; cursor:pointer; }
+    .tab-btn:hover { color:#fff; }
+    .tab-btn:focus-visible { outline:2px solid #3240ff; outline-offset:2px; }
+    .tab-btn.active { color:#fff; border-bottom-color:#3240ff; }
+    .tab-panel { display:none; }
+    .tab-panel.active { display:block; }
 
-    // taille des caractères
+    /* taille des caractères */
     .basin-val {
-  font-size: 20px;   /* 2 tailles plus gros que le texte actuel */
-  font-weight: 700;  /* plus visible */
-  color: #ffffff;    /* contraste */
-}
+      font-size: 20px;   /* 2 tailles plus gros que le texte actuel */
+      font-weight: 700;  /* plus visible */
+      color: #ffffff;    /* contraste */
+    }
 
     
   </style>
@@ -53,12 +60,24 @@
   <main>
 
 <div class="card" style="margin-top:16px">
-  <h3 style="margin:0 0 8px">Bassin de vie</h3>
-  <div id="basin-msg" class="muted" style="margin-top:4px"></div>
-  <div id="basin-out" style="margin-top:8px"></div>
-
-    <!-- Nouveau : l’EPCI est intégré ici -->
-  <div id="epci-out" style="margin-top:12px"></div>
+  <div class="tabs" role="tablist">
+    <button class="tab-btn active" type="button" data-target="tab-basin" role="tab" aria-selected="true" aria-controls="tab-basin">Bassin de vie</button>
+    <button class="tab-btn" type="button" data-target="tab-commerce" role="tab" aria-selected="false" aria-controls="tab-commerce">Commerces</button>
+    <button class="tab-btn" type="button" data-target="tab-medical" role="tab" aria-selected="false" aria-controls="tab-medical">Médico-social</button>
+  </div>
+  <div class="tab-panel active" id="tab-basin" role="tabpanel" aria-hidden="false">
+    <div id="basin-msg" class="muted" style="margin-top:4px">Sélectionnez une commune pour afficher le bassin de vie.</div>
+    <div id="basin-out" style="margin-top:8px"></div>
+    <div id="epci-out" style="margin-top:12px"></div>
+  </div>
+  <div class="tab-panel" id="tab-commerce" role="tabpanel" aria-hidden="true">
+    <div id="commerce-msg" class="muted" style="margin-top:4px">Sélectionnez une commune pour afficher les commerces.</div>
+    <div id="commerce-out" style="margin-top:8px"></div>
+  </div>
+  <div class="tab-panel" id="tab-medical" role="tabpanel" aria-hidden="true">
+    <div id="medical-msg" class="muted" style="margin-top:4px">Sélectionnez une commune pour afficher les établissements médico-sociaux.</div>
+    <div id="medical-out" style="margin-top:8px"></div>
+  </div>
 </div>
     
     <div class="card">
@@ -115,6 +134,9 @@
   function euro(n){ if (n == null || Number.isNaN(n)) return "N/A";
     return new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR', maximumFractionDigits: 0 }).format(n); }
   function number(n){ return new Intl.NumberFormat('fr-FR').format(n ?? 0); }
+  function escapeHtml(str){
+    return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
   async function loadJSON(url){
     const r = await fetch(url + '?nocache=' + Date.now(), { cache: 'no-store' });
     if(!r.ok) throw new Error('HTTP ' + r.status);
@@ -245,10 +267,139 @@ function renderEPCI(epciInfo) {
 
 // ----- Charger le fichier communes_min.json une seule fois -----
 let COMMUNES_MIN = null;
+let COMMERCE_DATA = null;
+let MEDICAL_DATA = null;
 async function ensureCommunesMin() {
   if (!COMMUNES_MIN) {
     COMMUNES_MIN = await loadJSON('communes_min.json');
   }
+}
+
+async function loadFacilityDataset(url) {
+  const r = await fetch(`${url}?nocache=${Date.now()}`, { cache: 'no-store' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const txt = (await r.text()).replace(/\ufeff/g, '');
+  const lines = txt
+    .split(/\r?\n/)
+    .map(line => line.replace(/\s+$/, ''));
+
+  const headerIndex = lines.findIndex(line => line.trimStart().startsWith('GEO;'));
+  if (headerIndex === -1) throw new Error('En-tête GEO introuvable');
+
+  let facilityCodesLine = [];
+  let facilityLabelsLine = [];
+  for (let i = 0; i < headerIndex; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    if (!facilityCodesLine.length && line.startsWith(';FACILITY_TYPE;')) {
+      const parts = line.split(';').map(part => part.trim().replace(/^"|"$/g, ''));
+      facilityCodesLine = parts;
+      continue;
+    }
+    if (facilityCodesLine.length && !facilityLabelsLine.length && line.includes(';') && !line.startsWith(';FACILITY_TYPE;')) {
+      facilityLabelsLine = line.split(';').map(part => part.trim().replace(/^"|"$/g, ''));
+      break;
+    }
+  }
+
+  const headerParts = lines[headerIndex]
+    .trim()
+    .split(';')
+    .map(part => part.trim().replace(/^"|"$/g, ''));
+  const facilities = [];
+  for (let i = 2; i < headerParts.length; i++) {
+    const code = ((facilityCodesLine[i] ?? headerParts[i]) || '').trim();
+    if (!code) continue;
+    const rawLabel = (facilityLabelsLine[i] ?? '').trim();
+    const label = rawLabel.length ? rawLabel : code;
+    facilities.push({ index: i, code, label });
+  }
+
+  const map = new Map();
+  const codePattern = /^[0-9A-Z]{5}$/;
+
+  for (let i = headerIndex + 1; i < lines.length; i++) {
+    const rawLine = lines[i];
+    if (!rawLine) continue;
+
+    const trimmedLine = rawLine.trim();
+    if (!trimmedLine || trimmedLine.startsWith(';')) continue;
+
+    const parts = rawLine
+      .split(';')
+      .map(part => part.trim().replace(/^"|"$/g, ''));
+    const insee = (parts[0] || '').toUpperCase();
+    if (!codePattern.test(insee)) continue;
+    const communeName = parts[1] || '';
+
+    const values = [];
+    for (const f of facilities) {
+      const raw = parts[f.index] ?? '';
+      const value = Number.parseInt(raw, 10);
+      if (Number.isFinite(value) && value > 0) {
+        values.push({ code: f.code, label: f.label, value });
+      }
+    }
+
+    map.set(insee, { name: communeName, values });
+  }
+
+  return { facilities, map };
+}
+
+async function ensureCommerceData() {
+  if (!COMMERCE_DATA) {
+    COMMERCE_DATA = await loadFacilityDataset('BPE_COMMERCE_FR.csv');
+  }
+  return COMMERCE_DATA;
+}
+
+async function ensureMedicalData() {
+  if (!MEDICAL_DATA) {
+    MEDICAL_DATA = await loadFacilityDataset('BPE_SANTE_ACTION_SOCIALE_FR.csv');
+  }
+  return MEDICAL_DATA;
+}
+
+function renderFacilityTable(communeName, entries, inseeCode, options = {}) {
+  const datasetTitle = options.datasetTitle || 'Équipements recensés';
+  const entryColumnLabel = options.entryColumnLabel || 'Type';
+  const datasetLabel = options.emptyDatasetLabel || 'équipement';
+
+  if (!entries || !entries.length) {
+    const label = communeName ? escapeHtml(communeName) : 'cette commune';
+    const code = inseeCode ? ` (${escapeHtml(inseeCode)})` : '';
+    return `<div class="muted">Aucun ${escapeHtml(datasetLabel)} recensé au-dessus de 0 pour ${label}${code}.</div>`;
+  }
+
+  const rows = entries
+    .slice()
+    .sort((a, b) => b.value - a.value)
+    .map(entry => `
+      <tr>
+        <td>${escapeHtml(entry.label)}</td>
+        <td style="text-align:right">${number(entry.value)}</td>
+      </tr>
+    `)
+    .join('');
+
+  const headingName = communeName ? escapeHtml(communeName) : 'Commune inconnue';
+  const code = inseeCode ? ` (${escapeHtml(inseeCode)})` : '';
+
+  return `
+    <div class="muted" style="margin-bottom:8px">${escapeHtml(datasetTitle)} — ${headingName}${code}</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="text-align:left">${escapeHtml(entryColumnLabel)}</th>
+          <th style="text-align:right">Nombre</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+  `;
 }
 
 // Distance Haversine (km)
@@ -320,6 +471,30 @@ return `
   const suggestions = $('#suggestions');
   const msg = $('#msg');
   const out = $('#out');
+  const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
+  const tabPanels = Array.from(document.querySelectorAll('.tab-panel'));
+  const commerceMsg = $('#commerce-msg');
+  const commerceOut = $('#commerce-out');
+  const defaultCommerceMessage = 'Sélectionnez une commune pour afficher les commerces.';
+  const medicalMsg = $('#medical-msg');
+  const medicalOut = $('#medical-out');
+  const defaultMedicalMessage = 'Sélectionnez une commune pour afficher les établissements médico-sociaux.';
+
+  tabButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const target = button.dataset.target;
+      tabButtons.forEach((b) => {
+        const isActive = b === button;
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      tabPanels.forEach((panel) => {
+        const isActive = panel.id === target;
+        panel.classList.toggle('active', isActive);
+        panel.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+      });
+    });
+  });
   const btnSe = $('#btn-seloger');
   const seOut = $('#seloger-out');
 
@@ -355,6 +530,14 @@ return `
     window.chosen = null;
     out.classList.remove('show'); out.innerHTML = '';
     seOut.classList.remove('show'); seOut.innerHTML = '';
+    if (commerceMsg && commerceOut) {
+      commerceMsg.textContent = defaultCommerceMessage;
+      commerceOut.innerHTML = '';
+    }
+    if (medicalMsg && medicalOut) {
+      medicalMsg.textContent = defaultMedicalMessage;
+      medicalOut.innerHTML = '';
+    }
     searchAdresse(e.target.value);
   });
 
@@ -368,6 +551,14 @@ return `
 
     if(!window.chosen){ msg.innerHTML = '<div class="error">Choisissez d’abord une commune.</div>'; return; }
     btn.disabled = true; btn.textContent = 'Chargement…';
+    if (commerceMsg && commerceOut) {
+      commerceMsg.textContent = 'Chargement des commerces…';
+      commerceOut.innerHTML = '';
+    }
+    if (medicalMsg && medicalOut) {
+      medicalMsg.textContent = 'Chargement des établissements médico-sociaux…';
+      medicalOut.innerHTML = '';
+    }
     try {
       const [p12, p24] = await Promise.all([ loadJSON('prices_12.json'), loadJSON('prices_24.json') ]);
       const r12 = p12.data[window.chosen.code_insee];
@@ -432,15 +623,46 @@ out.classList.add('show');
 
 const epciOut = document.getElementById('epci-out');
 if (epciOut) {
-  epciOut.classList.remove('show');
   epciOut.innerHTML = '';
   try {
     const info = await computeEPCIInfo(window.chosen.code_insee);
     epciOut.innerHTML = renderEPCI(info);
-    epciOut.classList.add('show');
   } catch (e) {
     epciOut.innerHTML = `<div class="error">Impossible de récupérer l'EPCI.</div>`;
-    epciOut.classList.add('show');
+  }
+}
+
+const normalizedSelectedCode = (window.chosen.code_insee || '').trim().toUpperCase();
+
+if (commerceMsg && commerceOut) {
+  try {
+    const commerceData = await ensureCommerceData();
+    const row = commerceData.map.get(normalizedSelectedCode);
+    commerceMsg.textContent = '';
+    commerceOut.innerHTML = renderFacilityTable(window.chosen.name, row ? row.values : [], normalizedSelectedCode, {
+      datasetTitle: 'Commerces recensés',
+      entryColumnLabel: 'Type de commerce',
+      emptyDatasetLabel: 'commerce'
+    });
+  } catch (e) {
+    commerceMsg.textContent = '';
+    commerceOut.innerHTML = `<div class="error">Impossible de charger les commerces.</div>`;
+  }
+}
+
+if (medicalMsg && medicalOut) {
+  try {
+    const medicalData = await ensureMedicalData();
+    const row = medicalData.map.get(normalizedSelectedCode);
+    medicalMsg.textContent = '';
+    medicalOut.innerHTML = renderFacilityTable(window.chosen.name, row ? row.values : [], normalizedSelectedCode, {
+      datasetTitle: 'Établissements médico-sociaux recensés',
+      entryColumnLabel: 'Type d\'équipement',
+      emptyDatasetLabel: 'établissement médico-social'
+    });
+  } catch (e) {
+    medicalMsg.textContent = '';
+    medicalOut.innerHTML = `<div class="error">Impossible de charger les établissements médico-sociaux.</div>`;
   }
 }
 
