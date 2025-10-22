@@ -275,17 +275,39 @@ async function ensureCommerceData() {
   const r = await fetch('BPE_COMMERCE_FR.csv?nocache=' + Date.now(), { cache: 'no-store' });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const txt = (await r.text()).replace(/\ufeff/g, '');
-  const lines = txt.split(/\r?\n/).map(line => line.trim());
-  const headerIndex = lines.findIndex(line => line.startsWith('GEO;'));
-  if (headerIndex === -1) throw new Error('En-tête introuvable');
+  const lines = txt
+    .split(/\r?\n/)
+    .map(line => line.replace(/\s+$/, ''));
 
-  const codes = lines[headerIndex].split(';');
-  const labels = headerIndex > 0 ? lines[headerIndex - 1].split(';') : [];
+  const headerIndex = lines.findIndex(line => line.trimStart().startsWith('GEO;'));
+  if (headerIndex === -1) throw new Error('En-tête GEO introuvable');
+
+  let facilityCodesLine = [];
+  let facilityLabelsLine = [];
+  const hasFacilityCode = (str) => /^B\d{3}$/i.test(str.trim());
+  for (let i = 0; i < headerIndex; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    if (!facilityCodesLine.length && line.startsWith(';FACILITY_TYPE;')) {
+      const parts = line.split(';');
+      if (parts.some(hasFacilityCode)) {
+        facilityCodesLine = parts;
+      }
+      continue;
+    }
+    if (facilityCodesLine.length && !facilityLabelsLine.length && line.includes(';') && !line.startsWith(';FACILITY_TYPE;')) {
+      facilityLabelsLine = line.split(';');
+      break;
+    }
+  }
+
+  const headerParts = lines[headerIndex].trim().split(';');
   const facilities = [];
-  for (let i = 2; i < codes.length; i++) {
-    const code = codes[i];
+  for (let i = 2; i < headerParts.length; i++) {
+    const code = ((facilityCodesLine[i] ?? headerParts[i]) || '').trim();
     if (!code) continue;
-    const label = labels[i] && labels[i].length ? labels[i] : code;
+    const rawLabel = (facilityLabelsLine[i] ?? '').trim();
+    const label = rawLabel.length ? rawLabel : code;
     facilities.push({ index: i, code, label });
   }
 
@@ -293,10 +315,14 @@ async function ensureCommerceData() {
   const codePattern = /^[0-9A-Z]{5}$/;
 
   for (let i = headerIndex + 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line || line.startsWith(';')) continue;
-    const parts = line.split(';');
-    const insee = parts[0];
+    const rawLine = lines[i];
+    if (!rawLine) continue;
+
+    const trimmedLine = rawLine.trim();
+    if (!trimmedLine || trimmedLine.startsWith(';')) continue;
+
+    const parts = rawLine.split(';').map(part => part.trim());
+    const insee = (parts[0] || '').toUpperCase();
     if (!codePattern.test(insee)) continue;
     const communeName = parts[1] || '';
 
@@ -316,9 +342,11 @@ async function ensureCommerceData() {
   return COMMERCE_DATA;
 }
 
-function renderCommerceTable(communeName, entries) {
+function renderCommerceTable(communeName, entries, inseeCode) {
   if (!entries || !entries.length) {
-    return '<div class="muted">Aucun commerce recensé au-dessus de 0 dans cette commune.</div>';
+    const label = communeName ? escapeHtml(communeName) : 'cette commune';
+    const code = inseeCode ? ` (${escapeHtml(inseeCode)})` : '';
+    return `<div class="muted">Aucun commerce recensé au-dessus de 0 pour ${label}${code}.</div>`;
   }
 
   const rows = entries
@@ -333,7 +361,7 @@ function renderCommerceTable(communeName, entries) {
     .join('');
 
   return `
-    <div class="muted" style="margin-bottom:8px">Commerces recensés — ${escapeHtml(communeName)}</div>
+    <div class="muted" style="margin-bottom:8px">Commerces recensés — ${escapeHtml(communeName)}${inseeCode ? ` (${escapeHtml(inseeCode)})` : ''}</div>
     <table>
       <thead>
         <tr>
@@ -419,6 +447,9 @@ return `
   const out = $('#out');
   const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
   const tabPanels = Array.from(document.querySelectorAll('.tab-panel'));
+  const commerceMsg = $('#commerce-msg');
+  const commerceOut = $('#commerce-out');
+  const defaultCommerceMessage = 'Sélectionnez une commune pour afficher les commerces.';
 
   tabButtons.forEach((button) => {
     button.addEventListener('click', () => {
@@ -470,6 +501,10 @@ return `
     window.chosen = null;
     out.classList.remove('show'); out.innerHTML = '';
     seOut.classList.remove('show'); seOut.innerHTML = '';
+    if (commerceMsg && commerceOut) {
+      commerceMsg.textContent = defaultCommerceMessage;
+      commerceOut.innerHTML = '';
+    }
     searchAdresse(e.target.value);
   });
 
@@ -483,6 +518,10 @@ return `
 
     if(!window.chosen){ msg.innerHTML = '<div class="error">Choisissez d’abord une commune.</div>'; return; }
     btn.disabled = true; btn.textContent = 'Chargement…';
+    if (commerceMsg && commerceOut) {
+      commerceMsg.textContent = 'Chargement des commerces…';
+      commerceOut.innerHTML = '';
+    }
     try {
       const [p12, p24] = await Promise.all([ loadJSON('prices_12.json'), loadJSON('prices_24.json') ]);
       const r12 = p12.data[window.chosen.code_insee];
@@ -556,16 +595,13 @@ if (epciOut) {
   }
 }
 
-const commerceMsg = document.getElementById('commerce-msg');
-const commerceOut = document.getElementById('commerce-out');
 if (commerceMsg && commerceOut) {
-  commerceMsg.textContent = 'Chargement des commerces…';
-  commerceOut.innerHTML = '';
   try {
     const commerceData = await ensureCommerceData();
-    const row = commerceData.map.get(window.chosen.code_insee);
+    const selectedCode = (window.chosen.code_insee || '').trim().toUpperCase();
+    const row = commerceData.map.get(selectedCode);
     commerceMsg.textContent = '';
-    commerceOut.innerHTML = renderCommerceTable(window.chosen.name, row ? row.values : []);
+    commerceOut.innerHTML = renderCommerceTable(window.chosen.name, row ? row.values : [], selectedCode);
   } catch (e) {
     commerceMsg.textContent = '';
     commerceOut.innerHTML = `<div class="error">Impossible de charger les commerces.</div>`;
