@@ -275,16 +275,18 @@ async function ensureCommerceData() {
   const r = await fetch('BPE_COMMERCE_FR.csv?nocache=' + Date.now(), { cache: 'no-store' });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const txt = (await r.text()).replace(/\ufeff/g, '');
-  const lines = txt.split(/\r?\n/).map(line => line.trim());
+  const lines = txt
+    .split(/\r?\n/)
+    .map(line => line.replace(/\s+$/, ''));
 
-  const headerIndex = lines.findIndex(line => line.startsWith('GEO;'));
+  const headerIndex = lines.findIndex(line => line.trimStart().startsWith('GEO;'));
   if (headerIndex === -1) throw new Error('En-tête GEO introuvable');
 
   let facilityCodesLine = [];
   let facilityLabelsLine = [];
   const hasFacilityCode = (str) => /^B\d{3}$/i.test(str.trim());
   for (let i = 0; i < headerIndex; i++) {
-    const line = lines[i];
+    const line = lines[i].trim();
     if (!line) continue;
     if (!facilityCodesLine.length && line.startsWith(';FACILITY_TYPE;')) {
       const parts = line.split(';');
@@ -299,7 +301,7 @@ async function ensureCommerceData() {
     }
   }
 
-  const headerParts = lines[headerIndex].split(';');
+  const headerParts = lines[headerIndex].trim().split(';');
   const facilities = [];
   for (let i = 2; i < headerParts.length; i++) {
     const code = ((facilityCodesLine[i] ?? headerParts[i]) || '').trim();
@@ -313,10 +315,11 @@ async function ensureCommerceData() {
   const codePattern = /^[0-9A-Z]{5}$/;
 
   for (let i = headerIndex + 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line || line.startsWith(';')) continue;
-    const parts = line.split(';');
-    const insee = parts[0];
+    const rawLine = lines[i];
+    const trimmedLine = rawLine.trim();
+    if (!trimmedLine || trimmedLine.startsWith(';')) continue;
+    const parts = trimmedLine.split(';');
+    const insee = (parts[0] || '').trim().toUpperCase();
     if (!codePattern.test(insee)) continue;
     const communeName = parts[1] || '';
 
@@ -336,9 +339,11 @@ async function ensureCommerceData() {
   return COMMERCE_DATA;
 }
 
-function renderCommerceTable(communeName, entries) {
+function renderCommerceTable(communeName, entries, inseeCode) {
   if (!entries || !entries.length) {
-    return '<div class="muted">Aucun commerce recensé au-dessus de 0 dans cette commune.</div>';
+    const label = communeName ? escapeHtml(communeName) : 'cette commune';
+    const code = inseeCode ? ` (${escapeHtml(inseeCode)})` : '';
+    return `<div class="muted">Aucun commerce recensé au-dessus de 0 pour ${label}${code}.</div>`;
   }
 
   const rows = entries
@@ -353,7 +358,7 @@ function renderCommerceTable(communeName, entries) {
     .join('');
 
   return `
-    <div class="muted" style="margin-bottom:8px">Commerces recensés — ${escapeHtml(communeName)}</div>
+    <div class="muted" style="margin-bottom:8px">Commerces recensés — ${escapeHtml(communeName)}${inseeCode ? ` (${escapeHtml(inseeCode)})` : ''}</div>
     <table>
       <thead>
         <tr>
@@ -590,9 +595,10 @@ if (epciOut) {
 if (commerceMsg && commerceOut) {
   try {
     const commerceData = await ensureCommerceData();
-    const row = commerceData.map.get(window.chosen.code_insee);
+    const selectedCode = (window.chosen.code_insee || '').trim().toUpperCase();
+    const row = commerceData.map.get(selectedCode);
     commerceMsg.textContent = '';
-    commerceOut.innerHTML = renderCommerceTable(window.chosen.name, row ? row.values : []);
+    commerceOut.innerHTML = renderCommerceTable(window.chosen.name, row ? row.values : [], selectedCode);
   } catch (e) {
     commerceMsg.textContent = '';
     commerceOut.innerHTML = `<div class="error">Impossible de charger les commerces.</div>`;
