@@ -316,10 +316,13 @@ async function ensureCommerceData() {
 
   for (let i = headerIndex + 1; i < lines.length; i++) {
     const rawLine = lines[i];
+    if (!rawLine) continue;
+
     const trimmedLine = rawLine.trim();
     if (!trimmedLine || trimmedLine.startsWith(';')) continue;
-    const parts = trimmedLine.split(';');
-    const insee = (parts[0] || '').trim().toUpperCase();
+
+    const parts = rawLine.split(';').map(part => part.trim());
+    const insee = (parts[0] || '').toUpperCase();
     if (!codePattern.test(insee)) continue;
     const communeName = parts[1] || '';
 
