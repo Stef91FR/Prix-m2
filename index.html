@@ -99,7 +99,7 @@
     <div class="card" style="margin-top:16px">
   <h3 style="margin:0 0 8px">Classement par département</h3>
 
-<div class="row" style="grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr 1fr auto; gap:8px">
+<div class="row" style="grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr 1fr 1fr auto; gap:8px">
   <input id="dept-code" type="text" placeholder="Code dép. (ex. 74, 13, 2A, 2B)" />
   <select id="period">
     <option value="12">12 mois</option>
@@ -108,6 +108,10 @@
   <select id="kind">
     <option value="appart">Appartements</option>
     <option value="maison">Maisons</option>
+  </select>
+  <select id="sort-by">
+    <option value="price">Prix €/m²</option>
+    <option value="population">Population</option>
   </select>
   <select id="order">
     <option value="desc">Décroissant</option>
@@ -720,7 +724,7 @@ if (medicalMsg && medicalOut) {
     }
   }
 
- function makeRanking(dataObj, deptCode, kind, order, popMin, popMax) {
+ function makeRanking(dataObj, deptCode, kind, sortBy, order, popMin, popMax) {
   const rows = [];
   for (const [insee, row] of Object.entries(dataObj.data)) {
     if (!row || row.dept !== deptCode) continue;
@@ -738,7 +742,8 @@ const pop = (POP_DATA && POP_DATA[insee]) ?? null;
     rows.push({ insee, ville: row.ville, value: val, n, pop });
   }
 
-  rows.sort((a,b) => (order === 'asc' ? a.value - b.value : b.value - a.value));
+  const sortKey = sortBy === 'population' ? 'pop' : 'value';
+  rows.sort((a, b) => (order === 'asc' ? a[sortKey] - b[sortKey] : b[sortKey] - a[sortKey]));
   return rows;
 }
 
@@ -786,6 +791,7 @@ function renderRankingTable(rows, title) {
   const dept  = document.getElementById('dept-code').value.trim().toUpperCase();
   const period = document.getElementById('period').value;
   const kind   = document.getElementById('kind').value;
+  const sortBy = document.getElementById('sort-by').value;
   const order  = document.getElementById('order').value;
 
   const rawMin = parseInt(document.getElementById('pop-min').value, 10);
@@ -808,9 +814,10 @@ function renderRankingTable(rows, title) {
   try {
     await ensureAllLoaded(); // Charge PRICES12, PRICES24, et POP_DATA
     const dataObj = (period === '12') ? PRICES12 : PRICES24;
-    const rows = makeRanking(dataObj, dept, kind, order, popMin, popMax);
+    const rows = makeRanking(dataObj, dept, kind, sortBy, order, popMin, popMax);
 
-    const title = `Département ${dept} • ${period} mois • ${kind === 'appart' ? 'Appartements' : 'Maisons'} • Population ${number(popMin)}–${number(popMax)} • Ordre ${order === 'asc' ? 'croissant' : 'décroissant'}`;
+    const sortLabel = sortBy === 'population' ? 'Population' : 'Prix €/m²';
+    const title = `Département ${dept} • ${period} mois • ${kind === 'appart' ? 'Appartements' : 'Maisons'} • Population ${number(popMin)}–${number(popMax)} • Tri ${sortLabel} (${order === 'asc' ? 'croissant' : 'décroissant'})`;
     rankingOut.innerHTML = renderRankingTable(rows, title);
   } catch (e) {
     rankingOut.innerHTML = `<div class="error">Erreur lors du chargement des données.</div>`;
